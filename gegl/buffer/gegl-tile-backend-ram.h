@@ -34,6 +34,19 @@ G_BEGIN_DECLS
 #define GEGL_IS_TILE_BACKEND_RAM_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((klass),  GEGL_TYPE_TILE_BACKEND_RAM))
 #define GEGL_TILE_BACKEND_RAM_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj),  GEGL_TYPE_TILE_BACKEND_RAM, GeglTileBackendRamClass))
 
+typedef struct _RamEntry RamEntry;
+
+struct _RamEntry
+{
+  gint    x;
+  gint    y;
+  GeglTile *tile;
+#ifdef __EMSCRIPTEN__
+  RamEntry *prev;
+  RamEntry *next;
+#endif
+};
+
 typedef struct _GeglTileBackendRam      GeglTileBackendRam;
 typedef struct _GeglTileBackendRamClass GeglTileBackendRamClass;
 
@@ -42,6 +55,12 @@ struct _GeglTileBackendRam
   GeglTileBackend  parent_instance;
 
   GHashTable      *entries;
+#ifdef __EMSCRIPTEN__
+  RamEntry        *lru_head;      /* Head of LRU doubly-linked list */
+  RamEntry        *lru_tail;      /* Tail of LRU doubly-linked list */
+  gsize            memory_limit;  /* Memory limit in bytes */
+  gsize            current_memory; /* Current memory usage in bytes */
+#endif
 };
 
 struct _GeglTileBackendRamClass

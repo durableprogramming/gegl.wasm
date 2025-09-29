@@ -48,7 +48,10 @@ static GeglBuffer *ensure_buffer (GeglOperation *operation)
     return buffer;
   if (!buffer)
     {
-      buffer = gegl_buffer_open (o->path);
+      gchar *path;
+      g_object_get (operation, "path", &path, NULL);
+      buffer = gegl_buffer_open (path);
+      g_free (path);
       o->user_data = buffer;
     }
   gegl_buffer_signal_connect (buffer, "changed",

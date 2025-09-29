@@ -4,3 +4,35 @@
 
 # Atom
 /.vscode
+
+# Devenv
+.devenv*
+devenv.local.nix
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+# Node.js
+node_modules/
+
+# Build outputs
+dist/
+cdn/
+
+# WASM files
+*.wasm
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.swp
+.durable-exterior

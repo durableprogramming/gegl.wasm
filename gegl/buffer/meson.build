@@ -17,6 +17,12 @@ elif host_cpu_family == 'arm'
     dependencies:[glib, babl],
     c_args: [gegl_cflags ] + arm_neon_flags
   )
+elif host_cpu_family.contains('wasm')
+  lib_gegl_wasm_simd = static_library('gegl-wasm-simd', 'gegl-algorithms.c',
+    include_directories:[geglInclude, rootInclude],
+    dependencies:[glib, babl],
+    c_args: [gegl_cflags ] + wasm_simd_flags
+  )
 
 endif
 

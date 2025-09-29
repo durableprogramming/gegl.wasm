@@ -31,12 +31,34 @@
 #include <gegl.h>
 #include <gegl-plugin.h>
 
-#include "opencl/gegl-buffer-cl-cache.h"
-
 #include "gegl-config.h"
 
 #include "transform-core.h"
 #include "module.h"
+
+#ifdef __wasm__
+#include <wasm_simd128.h>
+
+static void
+memset_simd_zero (gfloat *dest, gint px_size, gint count)
+{
+  if (px_size == 16) {
+    v128_t zero_vec = wasm_f32x4_splat(0.0f);
+    for (gint i = 0; i < count; i++) {
+      wasm_v128_store(dest, zero_vec);
+      dest += 4;
+    }
+  } else {
+    memset (dest, 0, px_size * count);
+  }
+}
+#else
+static void
+memset_simd_zero (gfloat *dest, gint px_size, gint count)
+{
+  memset (dest, 0, px_size * count);
+}
+#endif
 
 /*
  * Use to determine if key transform matrix coefficients are close
@@ -1228,8 +1250,8 @@ transform_affine (GeglOperation       *operation,
 
               gint x;
 
-              memset (dest_ptr, 0, (gint) components * sizeof (gfloat) * x1);
-              dest_ptr += (gint) components * x1;
+               memset_simd_zero (dest_ptr, components * sizeof(gfloat), x1);
+               dest_ptr += (gint) components * x1;
 
               u_float += x1 * inverse_jacobian.coeff [0][0];
               v_float += x1 * inverse_jacobian.coeff [1][0];
@@ -1247,13 +1269,13 @@ transform_affine (GeglOperation       *operation,
                   v_float += inverse_jacobian.coeff [1][0];
                 }
 
-              memset (dest_ptr, 0, (gint) components * sizeof (gfloat) * (roi->width - x2));
-              dest_ptr += (gint) components * (roi->width - x2);
+               memset_simd_zero (dest_ptr, components * sizeof(gfloat), roi->width - x2);
+               dest_ptr += (gint) components * (roi->width - x2);
             }
           else
             {
-              memset (dest_ptr, 0, (gint) components * sizeof (gfloat) * roi->width);
-              dest_ptr += (gint) components * roi->width;
+           memset_simd_zero (dest_ptr, components * sizeof(gfloat), roi->width);
+           dest_ptr += (gint) components * roi->width;
             }
 
           u_start += inverse_jacobian.coeff [0][1];
@@ -1366,8 +1388,8 @@ transform_generic (GeglOperation       *operation,
 
             gint x;
 
-            memset (dest_ptr, 0, (gint) components * sizeof (gfloat) * x1);
-            dest_ptr += (gint) components * x1;
+             memset_simd_zero (dest_ptr, components * sizeof(gfloat), x1);
+             dest_ptr += (gint) components * x1;
 
             u_float += x1 * inverse.coeff [0][0];
             v_float += x1 * inverse.coeff [1][0];
@@ -1401,14 +1423,14 @@ transform_generic (GeglOperation       *operation,
                 w_float += inverse.coeff [2][0];
               }
 
-            memset (dest_ptr, 0, (gint) components * sizeof (gfloat) * (roi->width - x2));
-            dest_ptr += (gint) components * (roi->width - x2);
+             memset_simd_zero (dest_ptr, components * sizeof(gfloat), roi->width - x2);
+             dest_ptr += (gint) components * (roi->width - x2);
           }
-        else
-          {
-            memset (dest_ptr, 0, (gint) components * sizeof (gfloat) * roi->width);
-            dest_ptr += (gint) components * roi->width;
-          }
+         else
+           {
+             memset_simd_zero (dest_ptr, components * sizeof(gfloat), roi->width);
+             dest_ptr += (gint) components * roi->width;
+           }
 
         u_start += inverse.coeff [0][1];
         v_start += inverse.coeff [1][1];
@@ -1513,8 +1535,8 @@ transform_nearest (GeglOperation       *operation,
 
             gint x;
 
-            memset (dest_ptr, 0, px_size * x1);
-            dest_ptr += px_size * x1;
+             memset_simd_zero (dest_ptr, px_size, x1);
+             dest_ptr += px_size * x1;
 
             u_float += x1 * inverse.coeff [0][0];
             v_float += x1 * inverse.coeff [1][0];
@@ -1538,13 +1560,13 @@ transform_nearest (GeglOperation       *operation,
                 w_float += inverse.coeff [2][0];
               }
 
-            memset (dest_ptr, 0, px_size * (roi->width - x2));
-            dest_ptr += px_size * (roi->width - x2);
+             memset_simd_zero (dest_ptr, px_size, roi->width - x2);
+             dest_ptr += px_size * (roi->width - x2);
           }
         else
           {
-            memset (dest_ptr, 0, px_size * roi->width);
-            dest_ptr += px_size * roi->width;
+           memset_simd_zero (dest_ptr, px_size, roi->width);
+           dest_ptr += px_size * roi->width;
           }
 
         u_start += inverse.coeff [0][1];
@@ -1599,50 +1621,20 @@ gegl_transform_process (GeglOperation        *operation,
 
   gegl_transform_create_composite_matrix (transform, &matrix);
 
-  if (gegl_transform_is_intermediate_node (transform) ||
-      gegl_matrix3_is_identity (&matrix))
-    {
-      /* passing straight through (like gegl:nop) */
-      input  = (GeglBuffer*)gegl_operation_context_dup_object (context, "input");
-      if (!input)
-        {
-          g_warning ("transform received NULL input");
-          return FALSE;
-        }
+   if (gegl_transform_is_intermediate_node (transform) ||
+       gegl_matrix3_is_identity (&matrix))
+     {
+       /* passing straight through (like gegl:nop) */
+       input  = (GeglBuffer*)gegl_operation_context_dup_object (context, "input");
+       if (!input)
+         {
+           g_warning ("transform received NULL input");
+           return FALSE;
+         }
 
-      gegl_operation_context_take_object (context, "output", G_OBJECT (input));
-    }
-  else if ((gegl_transform_matrix3_allow_fast_translate (&matrix) ||
-           (gegl_matrix3_is_translate (&matrix) &&
-            transform->sampler == GEGL_SAMPLER_NEAREST)))
-    {
-      /*
-       * Buffer shifting trick (enhanced nop). Do it if it is a
-       * translation by an integer vector with arbitrary samplers, and
-       * with arbitrary translations if the sampler is nearest
-       * neighbor.
-       *
-       * TODO: Should not be taken by non-interpolatory samplers (the
-       * current cubic, for example).
-       */
-      input  = (GeglBuffer*) gegl_operation_context_dup_object (context, "input");
-      output =
-        g_object_new (GEGL_TYPE_BUFFER,
-                      "source", input,
-                      "shift-x", -(gint) round((double) matrix.coeff [0][2]),
-                      "shift-y", -(gint) round((double) matrix.coeff [1][2]),
-                      "abyss-width", -1, /* Turn off abyss (use the
-                                            source abyss) */
-                      NULL);
-
-      if (gegl_object_get_has_forked (G_OBJECT (input)))
-        gegl_object_set_has_forked (G_OBJECT (output));
-
-      gegl_operation_context_take_object (context, "output", G_OBJECT (output));
-
-      g_clear_object (&input);
-    }
-  else
+       gegl_operation_context_take_object (context, "output", G_OBJECT (input));
+     }
+   else
     {
       gboolean is_cmyk =
        ((babl_get_model_flags (gegl_operation_get_format (operation, "output"))
@@ -1666,14 +1658,10 @@ gegl_transform_process (GeglOperation        *operation,
       if (transform->sampler == GEGL_SAMPLER_NEAREST)
         func = transform_nearest;
 
-      input  = (GeglBuffer*) gegl_operation_context_dup_object (context, "input");
-      output = gegl_operation_context_get_target (context, "output");
+       input  = (GeglBuffer*) gegl_operation_context_dup_object (context, "input");
+       output = gegl_operation_context_get_target (context, "output");
 
-      /* flush opencl caches, to avoid racy flushing
-       */
-      gegl_buffer_flush_ext (input, NULL);
-
-      if (gegl_operation_use_threading (operation, result))
+       if (gegl_operation_use_threading (operation, result))
       {
         ThreadData data;
 

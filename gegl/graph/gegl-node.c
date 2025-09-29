@@ -359,10 +359,10 @@ gegl_node_local_get_property (GObject    *gobject,
 
   switch (property_id)
     {
-      case PROP_OP_CLASS:
-        if (node->operation)
-          g_value_set_string (value, GEGL_OPERATION_GET_CLASS (node->operation)->name);
-        break;
+       case PROP_OP_CLASS:
+         if (node->operation)
+           g_value_set_string (value, g_type_name (G_OBJECT_TYPE (node->operation)));
+         break;
 
       case PROP_DONT_CACHE:
         g_value_set_boolean (value, node->dont_cache);
@@ -1356,21 +1356,18 @@ gegl_node_set_op_class (GeglNode    *node,
       GType          type;
       GeglOperation *operation;
 
-      type = gegl_operation_gtype_from_name (op_class);
+      type = g_type_from_name (op_class);
 
       if (!type)
         {
-          g_warning ("Failed to set operation type %s, using a passthrough op instead", op_class);
-          if (strcmp (op_class, "gegl:nop"))
+          g_warning ("Failed to set operation type %s", op_class);
+          if (strcmp (op_class, "GeglOpNop"))
             {
-              gegl_node_set_op_class (node, "gegl:nop", NULL, var_args);
+              gegl_node_set_op_class (node, "GeglOpNop", NULL, var_args);
             }
           else
             {
-              g_warning ("The failing op was 'gegl:nop' this means that GEGL was unable to locate any of it's\n"
-                         "plug-ins. Try making GEGL_PATH point to the directory containing the .so|.dll\n"
-                         "files with the image processing plug-ins, optionally you could try to make it\n"
-                         "point to the operations directory of a GEGL sourcetree with a build.");
+              g_warning ("The failing op was 'GeglOpNop'");
             }
           return;
         }
@@ -1800,7 +1797,7 @@ gegl_node_get_operation (const GeglNode *node)
       return NULL;
     }
 
-  return GEGL_OPERATION_GET_CLASS (node->operation)->name;
+  return g_type_name (G_OBJECT_TYPE (node->operation));
 }
 
 GeglOperation *

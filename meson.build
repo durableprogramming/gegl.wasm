@@ -116,10 +116,35 @@ gettext_package = api_name
 stability_version_number = (major_version != 0 ? minor_version : micro_version)
 stable = (stability_version_number % 2 == 0)
 
+################################################################################
+# Host system detection
+
+host_os = host_machine.system()
+os_win32  = host_os.contains('mingw') or host_os.contains('windows')
+os_android= host_os.contains('android')
+os_osx    = host_os.contains('darwin')
+os_emscripten = host_os == 'emscripten'
+
+host_cpu_family = host_machine.cpu_family()
+have_wasm = host_cpu_family == 'wasm32'
+
+# WebAssembly target detection
+is_wasm_build = os_emscripten or have_wasm
+is_emscripten_cross = meson.is_cross_build() and os_emscripten
+
+# WebAssembly SIMD flags
+if host_cpu_family.contains('wasm')
+  config.set10('ARCH_WASM', true)
+  wasm_simd_flags = ['-DSIMD_WASM_SIMD']
+else
+  wasm_simd_flags = []
+endif
+
 config.set        ('GEGL_MAJOR_VERSION',  '@0@'.format(major_version))
 config.set        ('GEGL_MINOR_VERSION',  '@0@'.format(minor_version))
 config.set        ('GEGL_MICRO_VERSION',  '@0@'.format(micro_version))
 config.set        ('GEGL_UNSTABLE',       not stable)
+config.set10      ('GEGL_WASM_BUILD',     is_wasm_build)
 
 config.set_quoted ('GEGL_LIBRARY',        '@0@'.format(api_name))
 config.set_quoted ('GETTEXT_PACKAGE',     '@0@'.format(gettext_package))
@@ -130,16 +155,6 @@ interface_age = 1
 binary_age = 100 * minor_version + micro_version
 lt_current = binary_age - interface_age
 so_version  = '@0@.@1@.@2@'.format(0, lt_current, interface_age)
-
-################################################################################
-# Host system detection
-
-host_os = host_machine.system()
-os_win32  = host_os.contains('mingw') or host_os.contains('windows')
-os_android= host_os.contains('android')
-os_osx    = host_os.contains('darwin')
-
-host_cpu_family = host_machine.cpu_family()
 if   host_cpu_family == 'x86'
   have_x86 = true
   config.set10('ARCH_X86',    true)
@@ -333,8 +348,8 @@ gio       = [
 json_glib = dependency('json-glib-1.0',
   version: dep_ver.get('json-glib')
 )
-libjpeg   = dependency('libjpeg',     version: dep_ver.get('libjpeg'))
-libpng    = dependency('libpng',      version: dep_ver.get('libpng'))
+libjpeg   = dependency('libjpeg',     version: dep_ver.get('libjpeg'), required: not is_emscripten_cross)
+libpng    = dependency('libpng',      version: dep_ver.get('libpng'), required: not is_emscripten_cross)
 
 # Required libraries eventually provided in subprojects/ subdir
 poly2tri_c = dependency('poly2tri-c',
@@ -348,10 +363,12 @@ libnsgif = dependency('libnsgif',
 )
 
 ################################################################################
-# Optionnal Dependencies
+# Optional Dependencies
+#
+# Conditional dependency loading for WebAssembly/Emscripten builds
 
 # GEGL library
-if get_option('introspection') != 'false'
+if get_option('introspection') != 'false' and not is_wasm_build
   g_ir = dependency('gobject-introspection-1.0',
     version:  dep_ver.get('g-ir'),
     required: get_option('introspection') == 'true' ? true : false,
@@ -371,119 +388,119 @@ endif
 # GEGL binary
 gexiv2    = dependency('gexiv2',
   version: dep_ver.get('gexiv2'),
-  required: get_option('gexiv2')
+  required: get_option('gexiv2').enabled() and not is_wasm_build
 )
 config.set('HAVE_GEXIV2', gexiv2.found())
 lua       = dependency('luajit',
   version: dep_ver.get('luajit'),
-  required: get_option('lua')
+  required: get_option('lua').enabled() and not os_emscripten
 )
 config.set('HAVE_LUA', lua.found())
 mrg       = dependency('mrg',
   version: dep_ver.get('mrg'),
-  required: get_option('mrg')
+  required: get_option('mrg').enabled() and not os_emscripten
 )
 config.set('HAVE_MRG', mrg.found())
 
 # Operations
 gdk_pixbuf= dependency('gdk-pixbuf-2.0',
   version: dep_ver.get('gdk-pixbuf'),
-  required: get_option('gdk-pixbuf')
+  required: get_option('gdk-pixbuf').enabled() and not os_emscripten
 )
 cairo     = dependency('cairo',
   version: dep_ver.get('cairo'),
-  required: get_option('cairo')
+  required: get_option('cairo').enabled() and not os_emscripten
 )
 pango     = dependency('pango',
   version: dep_ver.get('pango'),
-  required: get_option('pango')
+  required: get_option('pango').enabled() and not os_emscripten
 )
 pangocairo = dependency('pangocairo',
   version: dep_ver.get('pangocairo'),
-  required: get_option('pangocairo')
+  required: get_option('pangocairo').enabled() and not os_emscripten
 )
 
 jasper    = dependency('jasper',
   version: dep_ver.get('jasper'),
-  required: get_option('jasper')
+  required: get_option('jasper').enabled() and not os_emscripten
 )
 lcms      = dependency('lcms2',
   version: dep_ver.get('lcms'),
-  required: get_option('lcms')
+  required: get_option('lcms').enabled() and not os_emscripten
 )
 lensfun   = dependency('lensfun',
   version: dep_ver.get('lensfun'),
-  required: get_option('lensfun')
+  required: get_option('lensfun').enabled() and not os_emscripten
 )
 libraw    = dependency('libraw',
   version: dep_ver.get('libraw'),
-  required: get_option('libraw')
+  required: get_option('libraw').enabled() and not os_emscripten
 )
 librsvg   = dependency('librsvg-2.0',
   version: dep_ver.get('librsvg'),
-  required: get_option('librsvg')
+  required: get_option('librsvg').enabled() and not os_emscripten
 )
 libspiro  = dependency('libspiro',
   version: dep_ver.get('libspiro'),
-  required: get_option('libspiro')
+  required: get_option('libspiro').enabled() and not os_emscripten
 )
 libtiff   = dependency('libtiff-4',
   version: dep_ver.get('libtiff'),
-  required: get_option('libtiff')
+  required: get_option('libtiff').enabled() and not os_emscripten
 )
 libv4l1   = dependency('libv4l1',
   version: dep_ver.get('libv4l1'),
-  required: get_option('libv4l')
+  required: get_option('libv4l').enabled() and not os_emscripten
 )
 libv4l2   = dependency('libv4l2',
   version: dep_ver.get('libv4l2'),
-  required: get_option('libv4l2')
+  required: get_option('libv4l2').enabled() and not os_emscripten
 )
 libwebp   = dependency('libwebp',
   version: dep_ver.get('libwebp'),
-  required: get_option('webp')
+  required: get_option('webp').enabled() and not os_emscripten
 )
 maxflow   = dependency('maxflow',
   version: dep_ver.get('maxflow'),
-  required: get_option('maxflow')
+  required: get_option('maxflow').enabled() and not os_emscripten
 )
 openexr   = dependency('OpenEXR',
   version: dep_ver.get('openexr'),
-  required: get_option('openexr')
+  required: get_option('openexr').enabled() and not os_emscripten
 )
 openmp    = dependency('openmp',
-  required: get_option('openmp')
+  required: get_option('openmp').enabled() and not os_emscripten
 )
 config.set('HAVE_OPENMP', openmp.found())
 poppler = dependency('poppler-glib',
   version: dep_ver.get('poppler'),
-  required: get_option('poppler')
+  required: get_option('poppler').enabled() and not os_emscripten
 )
 sdl1      = dependency('sdl',
   version: dep_ver.get('sdl1'),
-  required: get_option('sdl1')
+  required: get_option('sdl1').enabled() and not os_emscripten
 )
 sdl2      = dependency('sdl2',
   version: dep_ver.get('sdl2'),
-  required: get_option('sdl2')
+  required: get_option('sdl2').enabled() and not os_emscripten
 )
 
 # AV libs
 libavcodec = dependency('libavcodec',
   version: dep_ver.get('libavcodec'),
-  required: get_option('libav')
+  required: get_option('libav').enabled() and not os_emscripten
 )
 libavformat = dependency('libavformat',
   version: dep_ver.get('libavformat'),
-  required: get_option('libav')
+  required: get_option('libav').enabled() and not os_emscripten
 )
 libavutil = dependency('libavutil',
   version: dep_ver.get('libavutil'),
-  required: get_option('libav')
+  required: get_option('libav').enabled() and not os_emscripten
 )
 libswscale = dependency('libswscale',
   version: dep_ver.get('libswscale'),
-  required: get_option('libav')
+  required: get_option('libav').enabled() and not os_emscripten
 )
 avlibs_found = (
   libavcodec.found() and
@@ -494,7 +511,7 @@ avlibs_found = (
 avlibs = avlibs_found ? [libavcodec, libavformat, libavutil, libswscale] : []
 
 # libumfpack
-libumfpack = cc.find_library('umfpack', required: get_option('umfpack'))
+libumfpack = cc.find_library('umfpack', required: get_option('umfpack').enabled() and not os_emscripten)
 if libumfpack.found()
   have_umfpack = cc.has_header_symbol(
     'umfpack.h','umfpack_dl_solve')
@@ -513,7 +530,7 @@ if libumfpack.found()
 endif
 
 # Tests
-if g_ir.found()
+if g_ir.found() and not is_wasm_build
   pygobject3 = dependency('pygobject-3.0',
     version: dep_ver.get('pygobject'),
     required: get_option('pygobject')
@@ -528,9 +545,13 @@ endif
 # Docs
 build_docs = true
 if get_option('docs') == 'auto'
-  if meson.is_cross_build()
+  if meson.is_cross_build() or os_emscripten
     build_docs = false
-    message('configure with -Ddocs=true to cross-build docs')
+    if os_emscripten
+      message('Documentation disabled for WebAssembly builds')
+    else
+      message('configure with -Ddocs=true to cross-build docs')
+    endif
   elif not asciidoc.found()
     build_docs = false
   endif
@@ -541,19 +562,19 @@ elif not asciidoc.found()
   warning('asciidoc is required to build website')
 endif
 
-gi_docgen = find_program('gi-docgen', required: get_option('gi-docgen'))
+gi_docgen = find_program('gi-docgen', required: get_option('gi-docgen').enabled() and not is_wasm_build)
 if get_option('gi-docgen').auto()
- build_gi_docgen = g_ir.found() and gi_docgen.found() and not meson.is_cross_build()
+  build_gi_docgen = g_ir.found() and gi_docgen.found() and not meson.is_cross_build() and not is_wasm_build
 else
- build_gi_docgen = get_option('gi-docgen').enabled()
+  build_gi_docgen = get_option('gi-docgen').enabled() and not is_wasm_build
 
- if build_gi_docgen and not g_ir.found()
-   warning('-Ddocs=true and -Dintrospection=true are required to build gi-docgen documentation')
-   build_gi_docgen = false
- endif
+  if build_gi_docgen and not g_ir.found()
+    warning('-Ddocs=true and -Dintrospection=true are required to build gi-docgen documentation')
+    build_gi_docgen = false
+  endif
 endif
 
-build_reference = get_option('gtk-doc') or build_gi_docgen
+build_reference = (get_option('gtk-doc') or build_gi_docgen) and not is_wasm_build
 
 #########################################################################
 # Install native debug data (.pdb) on Windows
@@ -579,6 +600,9 @@ argvs_extract = find_program('tools/argvs_extract.sh')
 subdir('libs/rgbe')
 subdir('opencl')
 subdir('gegl')
+if is_wasm_build
+  subdir('js')
+endif
 subdir('libs/npd')
 subdir('libs/ctx')
 
@@ -617,14 +641,16 @@ if meson.version().version_compare('>=0.54.0')
 endif
 
 subdir('seamless-clone')
-subdir('bin')
-subdir('tools')
+if not is_wasm_build
+  subdir('bin')
+  subdir('tools')
+  subdir('examples')
+  subdir('tests')
+  subdir('perf')
+  subdir('po')
+  subdir('docs')
+endif
 subdir('operations')
-subdir('examples')
-subdir('tests')
-subdir('perf')
-subdir('po')
-subdir('docs')
 
 
 if w3m.found()
@@ -724,3 +750,16 @@ summary(
     'webp'              : libwebp.found(),
   }, section: 'Optional dependencies'
 )
+
+if os_emscripten
+  summary(
+    {
+      'Target': 'WebAssembly',
+      'GUI components': 'disabled',
+      'Documentation': 'disabled',
+      'Tests': 'disabled',
+      'Examples': 'disabled',
+      'Tools': 'disabled',
+    }, section: 'WebAssembly Build Configuration'
+  )
+endif

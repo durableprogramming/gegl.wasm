@@ -34,10 +34,16 @@ property_file_path (path, _("File"), "/tmp/gegl-buffer.gegl")
 
 
 static void
-gegl_buffer_load_op_ensure_buffer (GeglProperties *o)
+gegl_buffer_load_op_ensure_buffer (GeglOperation *operation)
 {
+  GeglProperties *o = GEGL_PROPERTIES (operation);
   if (!o->user_data)
-    o->user_data = gegl_buffer_load (o->path);
+    {
+      gchar *path;
+      g_object_get (operation, "path", &path, NULL);
+      o->user_data = gegl_buffer_load (path);
+      g_free (path);
+    }
 }
 
 static GeglRectangle
@@ -46,7 +52,7 @@ gegl_buffer_load_op_get_bounding_box (GeglOperation *operation)
   GeglRectangle  result = { 0, 0, 0, 0 };
   GeglProperties    *o      = GEGL_PROPERTIES (operation);
 
-  gegl_buffer_load_op_ensure_buffer (o);
+  gegl_buffer_load_op_ensure_buffer (operation);
 
   if (o->user_data)
     {
@@ -66,7 +72,7 @@ gegl_buffer_load_op_process (GeglOperation        *operation,
 {
   GeglProperties *o = GEGL_PROPERTIES (operation);
 
-  gegl_buffer_load_op_ensure_buffer (o);
+  gegl_buffer_load_op_ensure_buffer (operation);
 
   gegl_operation_context_take_object (context, output_pad, o->user_data);
   o->user_data = NULL;

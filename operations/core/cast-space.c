@@ -26,8 +26,6 @@ property_string (space_name, _("Name"), "sRGB")
    description (_("One of: sRGB, Adobish, Rec2020, ProPhoto, Apple, ACEScg, ACES2065-1"))
 property_format (pointer, _("Pointer"), NULL)
    description (_("pointer to a const * Babl space"))
-property_file_path (path, _("Path"), "")
-  description (_("File system path to ICC matrix profile to load"))
 
 #else
 
@@ -49,20 +47,6 @@ prepare (GeglOperation *operation)
   const Babl *space = babl_space (o->space_name);
   if (o->pointer)
     space = o->pointer;
-  if (o->path && o->path[0])
-  {
-    gchar *icc_data = NULL;
-    gsize icc_length;
-    g_file_get_contents (o->path, &icc_data, &icc_length, NULL);
-    if (icc_data)
-    {
-      const char *error = NULL;
-      const Babl *s = babl_space_from_icc (icc_data, (gint)icc_length,
-                                 BABL_ICC_INTENT_DEFAULT, &error);
-      if (s) space = s;
-      g_free (icc_data);
-    }
-  }
   if (aux_format)
   {
     space = babl_format_get_space (aux_format);

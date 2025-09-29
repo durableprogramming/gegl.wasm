@@ -276,7 +276,7 @@ gegl_tile_block_free_mem (GeglTileBlock *block)
 
   g_atomic_pointer_add (&gegl_tile_alloc_total, -block_size);
 
-#ifdef HAVE_MALLOC_TRIM
+#if defined(HAVE_MALLOC_TRIM) && !defined(__EMSCRIPTEN__)
   if (gegl_tile_max_n_blocks - n_blocks >= GEGL_TILE_BLOCKS_PER_TRIM)
     {
       gegl_tile_max_n_blocks = (n_blocks + (GEGL_TILE_BLOCKS_PER_TRIM - 1)) /

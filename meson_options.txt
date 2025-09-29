@@ -5,6 +5,36 @@ option('docs',
   value: 'auto',
   description: 'build documentation'
 )
+option('wasm-core',
+  type: 'boolean',
+  value: 'false',
+  description: 'Include core operations in WASM build'
+)
+option('wasm-filters',
+  type: 'boolean',
+  value: 'false',
+  description: 'Include filter operations in WASM build'
+)
+option('wasm-transforms',
+  type: 'boolean',
+  value: 'false',
+  description: 'Include transform operations in WASM build'
+)
+option('wasm-io',
+  type: 'boolean',
+  value: 'false',
+  description: 'Include I/O operations in WASM build'
+)
+option('wasm-compositing',
+  type: 'boolean',
+  value: 'false',
+  description: 'Include compositing operations in WASM build'
+)
+option('wasm-workshop',
+  type: 'boolean',
+  value: 'false',
+  description: 'Include workshop operations in WASM build'
+)
 option('gtk-doc',
   type: 'boolean',
   value: 'false',

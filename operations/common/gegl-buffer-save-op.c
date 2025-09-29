@@ -39,9 +39,10 @@ gegl_buffer_save_op_process (GeglOperation       *operation,
                              const GeglRectangle *result,
                              gint                 level)
 {
-  GeglProperties *o = GEGL_PROPERTIES (operation);
-
-  gegl_buffer_save (input, o->path, result);
+  gchar *path;
+  g_object_get (operation, "path", &path, NULL);
+  gegl_buffer_save (input, path, result);
+  g_free (path);
 
   return TRUE;
 }

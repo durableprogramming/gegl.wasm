@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEGL.wasm Basic Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .file-input {
+            margin: 20px 0;
+            padding: 10px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        .file-input:hover {
+            border-color: #666;
+        }
+        .file-input.dragover {
+            border-color: #4CAF50;
+            background-color: #f9f9f9;
+        }
+        .canvas-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        canvas {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .progress {
+            width: 100%;
+            height: 20px;
+            background-color: #f0f0f0;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar {
+            height: 100%;
+            background-color: #4CAF50;
+            width: 0%;
+            transition: width 0.3s;
+        }
+        .info {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 10px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GEGL.wasm Basic Demo</h1>
+
+        <div class="info">
+            <strong>Instructions:</strong> Upload an image file to apply a blur effect using GEGL.wasm.
+            The image will be processed using WebAssembly for fast, client-side image processing.
+        </div>
+
+        <div class="file-input" id="fileInput">
+            <div>Click to select an image or drag and drop here</div>
+            <input type="file" id="fileUpload" accept="image/*" style="display: none;">
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="originalCanvas" style="display: none;"></canvas>
+            <canvas id="processedCanvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <button id="processBtn" disabled>Apply Blur</button>
+            <button id="resetBtn" disabled>Reset</button>
+        </div>
+
+        <div class="status" id="status">Ready to load an image</div>
+        <div class="progress" id="progress" style="display: none;">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+    </div>
+
+    <!-- Load GEGL.wasm JavaScript bindings -->
+    <script src="../dist/gegl-wasm.umd.min.js"></script>
+
+    <script>
+        class Gegldemo {
+            constructor() {
+                this.geglInitialized = false;
+                this.originalImageData = null;
+                this.processedImageData = null;
+
+                this.fileInput = document.getElementById('fileInput');
+                this.fileUpload = document.getElementById('fileUpload');
+                this.originalCanvas = document.getElementById('originalCanvas');
+                this.processedCanvas = document.getElementById('processedCanvas');
+                this.processBtn = document.getElementById('processBtn');
+                this.resetBtn = document.getElementById('resetBtn');
+                this.status = document.getElementById('status');
+                this.progress = document.getElementById('progress');
+                this.progressBar = document.getElementById('progressBar');
+
+                this.init();
+            }
+
+            async init() {
+                try {
+                    this.updateStatus('Initializing GEGL.wasm...');
+
+                    // Initialize GEGL
+                    await GeglWasm.Gegl.init();
+
+                    this.geglInitialized = true;
+                    this.updateStatus('GEGL.wasm initialized successfully!');
+                    this.setupEventListeners();
+
+                } catch (error) {
+                    console.error('Failed to initialize GEGL:', error);
+                    this.updateStatus('Failed to initialize GEGL.wasm. Check console for details.');
+                }
+            }
+
+            setupEventListeners() {
+                // File input click
+                this.fileInput.addEventListener('click', () => {
+                    this.fileUpload.click();
+                });
+
+                // File selection
+                this.fileUpload.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        this.loadImage(file);
+                    }
+                });
+
+                // Drag and drop
+                this.fileInput.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    this.fileInput.classList.add('dragover');
+                });
+
+                this.fileInput.addEventListener('dragleave', () => {
+                    this.fileInput.classList.remove('dragover');
+                });
+
+                this.fileInput.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    this.fileInput.classList.remove('dragover');
+                    const file = e.dataTransfer.files[0];
+                    if (file && file.type.startsWith('image/')) {
+                        this.loadImage(file);
+                    }
+                });
+
+                // Process button
+                this.processBtn.addEventListener('click', () => {
+                    this.applyBlur();
+                });
+
+                // Reset button
+                this.resetBtn.addEventListener('click', () => {
+                    this.resetImage();
+                });
+            }
+
+            async loadImage(file) {
+                try {
+                    this.updateStatus('Loading image...');
+
+                    const img = new Image();
+                    const canvas = this.originalCanvas;
+                    const ctx = canvas.getContext('2d');
+
+                    await new Promise((resolve, reject) => {
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = URL.createObjectURL(file);
+                    });
+
+                    // Set canvas size to image size
+                    canvas.width = img.width;
+                    canvas.height = img.height;
+
+                    // Draw image to canvas
+                    ctx.drawImage(img, 0, 0);
+
+                    // Get image data
+                    this.originalImageData = ctx.getImageData(0, 0, img.width, img.height);
+
+                    // Display on processed canvas
+                    this.displayImageData(this.originalImageData);
+
+                    // Enable buttons
+                    this.processBtn.disabled = false;
+                    this.resetBtn.disabled = false;
+
+                    this.updateStatus('Image loaded successfully! Click "Apply Blur" to process.');
+
+                    // Clean up object URL
+                    URL.revokeObjectURL(img.src);
+
+                } catch (error) {
+                    console.error('Failed to load image:', error);
+                    this.updateStatus('Failed to load image. Please try another file.');
+                }
+            }
+
+            async applyBlur() {
+                if (!this.originalImageData) return;
+
+                try {
+                    this.updateStatus('Applying blur effect...');
+                    this.processBtn.disabled = true;
+                    this.progress.style.display = 'block';
+                    this.updateProgress(25);
+
+                    // Create GEGL buffer from ImageData
+                    const inputBuffer = GeglWasm.CanvasUtils.imageDataToGeglBuffer(this.originalImageData);
+                    this.updateProgress(50);
+
+                    // Create a graph with buffer source and blur
+                    const graph = GeglWasm.Gegl.createGraph();
+                    const sourceNode = graph.createNode('gegl:buffer-source');
+                    sourceNode._node.setProperty('buffer', inputBuffer._buffer); // Set buffer using internal node
+
+                    const blurNode = graph.createNode('gegl:blur-gaussian');
+                    blurNode.setNumberProperty('std_dev_x', 5.0);
+                    blurNode.setNumberProperty('std_dev_y', 5.0);
+
+                    // Connect source to blur
+                    sourceNode.connectTo(blurNode);
+
+                    // Create output buffer
+                    const outputBuffer = GeglWasm.Gegl.createBuffer(inputBuffer.getExtent(), 'RGBA u8');
+                    this.updateProgress(75);
+
+                    // Process the graph
+                    blurNode.process();
+                    blurNode.blitToBuffer(outputBuffer._buffer, inputBuffer.getExtent());
+
+                    // Convert back to ImageData
+                    this.processedImageData = GeglWasm.CanvasUtils.geglBufferToImageData(outputBuffer);
+
+                    // Display processed image
+                    this.displayImageData(this.processedImageData);
+
+                    this.updateProgress(100);
+                    this.progress.style.display = 'none';
+                    this.processBtn.disabled = false;
+                    this.updateStatus('Blur effect applied successfully!');
+
+                } catch (error) {
+                    console.error('Failed to apply blur:', error);
+                    this.updateStatus('Failed to apply blur effect. Check console for details.');
+                    this.processBtn.disabled = false;
+                    this.progress.style.display = 'none';
+                }
+            }
+
+            resetImage() {
+                if (this.originalImageData) {
+                    this.displayImageData(this.originalImageData);
+                    this.processedImageData = null;
+                    this.updateStatus('Image reset to original.');
+                }
+            }
+
+            displayImageData(imageData) {
+                const canvas = this.processedCanvas;
+                const ctx = canvas.getContext('2d');
+
+                canvas.width = imageData.width;
+                canvas.height = imageData.height;
+                ctx.putImageData(imageData, 0, 0);
+            }
+
+            updateStatus(message) {
+                this.status.textContent = message;
+            }
+
+            updateProgress(percent) {
+                this.progressBar.style.width = percent + '%';
+            }
+
+            cleanup() {
+                if (this.geglInitialized) {
+                    GeglWasm.Gegl.exit();
+                }
+            }
+        }
+
+        // Initialize demo when page loads
+        let demo;
+        window.addEventListener('load', () => {
+            demo = new Gegldemo();
+        });
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (demo) {
+                demo.cleanup();
+            }
+        });
+    </script>
+</body>
+</html>

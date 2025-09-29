@@ -40,9 +40,8 @@
 #include "gegl-tile-handler-cache.h"
 #include "gegl-tile-handler-private.h"
 #include "gegl-tile-storage.h"
-#include "gegl-tile-backend-file.h"
-#include "gegl-tile-backend-swap.h"
 #include "gegl-tile-backend-ram.h"
+#include "gegl-tile-backend-file.h"
 #include "gegl-buffer-formats.h"
 #include "gegl-algorithms.h"
 
@@ -115,9 +114,10 @@ gegl_buffer_get_property (GObject    *gobject,
         g_value_set_int (value, buffer->tile_height);
         break;
 
-      case PROP_PATH:
-        g_value_set_string (value, buffer->path);
-        break;
+       case PROP_PATH:
+         /* For WASM compatibility, paths are not supported, always NULL */
+         g_value_set_string (value, NULL);
+         break;
 
       case PROP_PIXELS:
         g_value_set_int (value, buffer->extent.width * buffer->extent.height);
@@ -481,12 +481,19 @@ gegl_buffer_constructor (GType                  type,
 
   object = G_OBJECT_CLASS (parent_class)->constructor (type, n_params, params);
 
-  buffer  = GEGL_BUFFER (object);
-  handler = GEGL_TILE_HANDLER (object);
-  source  = handler->source;
-  backend = gegl_buffer_backend (buffer);
+   buffer  = GEGL_BUFFER (object);
+   handler = GEGL_TILE_HANDLER (object);
+   source  = handler->source;
 
-  if (source)
+   /* For WASM compatibility, remove file-based backends */
+   if (buffer->backend && GEGL_IS_TILE_BACKEND_FILE (buffer->backend)) {
+     g_object_unref (buffer->backend);
+     buffer->backend = NULL;
+   }
+
+   backend = gegl_buffer_backend (buffer);
+
+   if (source)
     {
       if (GEGL_IS_TILE_STORAGE (source))
         {
@@ -510,17 +517,14 @@ gegl_buffer_constructor (GType                  type,
         {
           backend = buffer->backend;
 
-          buffer->format = gegl_tile_backend_get_format (backend);
-          buffer->tile_width = gegl_tile_backend_get_tile_width (backend);
-          buffer->tile_height = gegl_tile_backend_get_tile_height (backend);
+           buffer->format = gegl_tile_backend_get_format (backend);
+           buffer->tile_width = gegl_tile_backend_get_tile_width (backend);
+           buffer->tile_height = gegl_tile_backend_get_tile_height (backend);
 
-          if (buffer->path)
-            g_free (buffer->path);
-
-          if (GEGL_IS_TILE_BACKEND_FILE (backend))
-            g_object_get (backend, "path", &buffer->path, NULL);
-          else
-            buffer->path = NULL;
+           /* For WASM compatibility, paths are not supported */
+           if (buffer->path)
+             g_free (buffer->path);
+           buffer->path = NULL;
         }
       else
         {
@@ -533,51 +537,12 @@ gegl_buffer_constructor (GType                  type,
               buffer->format = babl_format ("RGBA float");
             }
 
-          /* make a new backend & storage */
-
-          if (buffer->path)
-            maybe_path = buffer->path;
-          else
-            maybe_path = gegl_buffer_config ()->swap;
-
-          if (maybe_path)
-            use_ram = g_ascii_strcasecmp (maybe_path, "ram") == 0;
-          else
-            use_ram = TRUE;
-
-          if (use_ram == TRUE)
-            {
-              backend = g_object_new (GEGL_TYPE_TILE_BACKEND_RAM,
-                                      "tile-width",  buffer->tile_width,
-                                      "tile-height", buffer->tile_height,
-                                      "format",      buffer->format,
-                                      NULL);
-            }
-          else if (buffer->path)
-            {
-              backend = g_object_new (GEGL_TYPE_TILE_BACKEND_FILE,
-                                      "tile-width",  buffer->tile_width,
-                                      "tile-height", buffer->tile_height,
-                                      "format",      buffer->format,
-                                      "path",        buffer->path,
-                                      NULL);
-
-              /* Re-inherit values in case path pointed to an existing buffer */
-              buffer->format = gegl_tile_backend_get_format (backend);
-              buffer->tile_width = gegl_tile_backend_get_tile_width (backend);
-              buffer->tile_height = gegl_tile_backend_get_tile_height (backend);
-
-              if (buffer->extent.width == -1 || buffer->extent.height == -1)
-                buffer->extent = gegl_tile_backend_get_extent (backend);
-            }
-          else
-            {
-              backend = g_object_new (GEGL_TYPE_TILE_BACKEND_SWAP,
-                                      "tile-width",  buffer->tile_width,
-                                      "tile-height", buffer->tile_height,
-                                      "format",      buffer->format,
-                                      NULL);
-            }
+          /* For WASM compatibility, always use RAM backend */
+          backend = g_object_new (GEGL_TYPE_TILE_BACKEND_RAM,
+                                  "tile-width",  buffer->tile_width,
+                                  "tile-height", buffer->tile_height,
+                                  "format",      buffer->format,
+                                  NULL);
 
           buffer->backend = backend;
         }
@@ -1440,6 +1405,15 @@ void _gegl_init_buffer (int variant)
       gegl_resample_nearest   = gegl_resample_nearest_x86_64_v3;
       gegl_downscale_2x2      = gegl_downscale_2x2_x86_64_v3;
       break;
+  }
+#endif
+#ifdef ARCH_WASM
+  if (variant)
+  {
+    gegl_resample_bilinear  = gegl_resample_bilinear_wasm_simd;
+    gegl_resample_boxfilter = gegl_resample_boxfilter_wasm_simd;
+    gegl_resample_nearest   = gegl_resample_nearest_wasm_simd;
+    gegl_downscale_2x2      = gegl_downscale_2x2_wasm_simd;
   }
 #endif
 }

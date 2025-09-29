@@ -25,6 +25,10 @@
 #include "gegl-buffer-formats.h"
 #include "gegl-sampler-linear.h"
 
+#ifdef __wasm__
+#include <wasm_simd128.h>
+#endif
+
 enum
 {
   PROP_0,
@@ -124,11 +128,11 @@ gegl_sampler_linear_interpolate (      GeglSampler       *self,
    */
   const gfloat x_times_y = x * y;
 
-  /*
-   * Load top row:
-   */
-  gfloat top_left[nc];
-  gfloat top_rite[nc];
+   /*
+    * Load top row:
+    */
+   gfloat top_left[8] __attribute__((aligned(16)));
+   gfloat top_rite[8] __attribute__((aligned(16)));
 
   for (gint c = 0; c < nc; c++)
     top_left[c] = *in_bptr++;
@@ -147,11 +151,11 @@ gegl_sampler_linear_interpolate (      GeglSampler       *self,
   const gfloat w_times_y = y - x_times_y;
   const gfloat x_times_z = x - x_times_y;
 
-  /*
-   * Load bottom row:
-   */
-  gfloat bot_left[5];
-  gfloat bot_rite[5];
+   /*
+    * Load bottom row:
+    */
+   gfloat bot_left[8] __attribute__((aligned(16)));
+   gfloat bot_rite[8] __attribute__((aligned(16)));
   for (gint c = 0; c < nc; c++)
     bot_left[c] = *in_bptr++;
   for (gint c = 0; c < nc; c++)
@@ -163,17 +167,53 @@ gegl_sampler_linear_interpolate (      GeglSampler       *self,
   {
   const gfloat w_times_z = (gfloat) 1. - ( x + w_times_y );
 
-  for (gint c = 0; c < nc; c++)
-    {
-      output[c] =
-        x_times_y * bot_rite[c]
-        +
-        w_times_y * bot_left[c]
-        +
-        x_times_z * top_rite[c]
-        +
-        w_times_z * top_left[c];
-    }
+   if (nc == 4) {
+#ifdef __wasm__
+    v128_t v_top_left = wasm_v128_load(top_left);
+    v128_t v_top_rite = wasm_v128_load(top_rite);
+    v128_t v_bot_left = wasm_v128_load(bot_left);
+    v128_t v_bot_rite = wasm_v128_load(bot_rite);
+    v128_t v_x_times_y = wasm_f32x4_splat(x_times_y);
+    v128_t v_w_times_y = wasm_f32x4_splat(w_times_y);
+    v128_t v_x_times_z = wasm_f32x4_splat(x_times_z);
+    v128_t v_w_times_z = wasm_f32x4_splat(w_times_z);
+    v128_t result = wasm_f32x4_add(
+      wasm_f32x4_mul(v_x_times_y, v_bot_rite),
+      wasm_f32x4_add(
+        wasm_f32x4_mul(v_w_times_y, v_bot_left),
+        wasm_f32x4_add(
+          wasm_f32x4_mul(v_x_times_z, v_top_rite),
+          wasm_f32x4_mul(v_w_times_z, v_top_left)
+        )
+      )
+    );
+    wasm_v128_store(output, result);
+#else
+    for (gint c = 0; c < 4; c++)
+      {
+        output[c] =
+          x_times_y * bot_rite[c]
+          +
+          w_times_y * bot_left[c]
+          +
+          x_times_z * top_rite[c]
+          +
+          w_times_z * top_left[c];
+      }
+#endif
+  } else {
+    for (gint c = 0; c < nc; c++)
+      {
+        output[c] =
+          x_times_y * bot_rite[c]
+          +
+          w_times_y * bot_left[c]
+          +
+          x_times_z * top_rite[c]
+          +
+          w_times_z * top_left[c];
+      }
+  }
   }
   }
 }

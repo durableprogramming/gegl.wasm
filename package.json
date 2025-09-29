@@ -1,0 +1,81 @@
+{
+  "name": "gegl-wasm",
+  "version": "0.4.63",
+  "description": "GEGL image processing library compiled to WebAssembly for browser and Node.js",
+  "author": "Øyvind Kolås <pippin@gimp.org>",
+  "main": "dist/gegl-wasm.cjs",
+  "types": "js/gegl.d.ts",
+  "browser": "dist/gegl-wasm.umd.js",
+  "module": "dist/gegl-wasm.mjs",
+  "files": [
+    "dist/*.js",
+    "dist/*.wasm",
+    "js/*.d.ts",
+    "README.md",
+    "COPYING",
+    "COPYING.LESSER",
+    "AUTHORS"
+  ],
+  "scripts": {
+    "build": "./build-wasm.sh prod",
+    "build:dev": "./build-wasm.sh dev",
+    "build:dist": "./build/create-distributions.sh prod",
+    "build:dist:dev": "./build/create-distributions.sh dev",
+    "build:cdn": "./build/prepare-cdn.sh",
+    "test": "node tests/run-browser-tests.js",
+    "test:browser": "node tests/run-browser-tests.js",
+    "clean": "rm -rf build-wasm-dev build-wasm-prod dist cdn",
+    "prepublishOnly": "npm run build && npm run build:dist"
+  },
+  "keywords": [
+    "gegl",
+    "wasm",
+    "webassembly",
+    "image-processing",
+    "graphics",
+    "filter",
+    "canvas",
+    "browser",
+    "nodejs"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/durableprogramming/gegl.wasm.git"
+  },
+  "bugs": {
+    "url": "https://github.com/durableprogramming/gegl.wasm/issues"
+  },
+  "homepage": "https://www.gegl.org/",
+  "license": "GPL-3.0-or-later",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "browserslist": [
+    "last 2 Chrome versions",
+    "last 2 Firefox versions",
+    "last 2 Safari versions",
+    "last 2 Edge versions"
+  ],
+  "devDependencies": {
+    "@rollup/plugin-commonjs": "^28.0.6",
+    "@rollup/plugin-node-resolve": "^16.0.1",
+    "@rollup/plugin-terser": "^0.4.4",
+    "playwright": "^1.40.0",
+    "rollup": "^2.79.2"
+  },
+  "exports": {
+    ".": {
+      "types": "./js/gegl.d.ts",
+      "browser": "./dist/gegl-wasm.umd.js",
+      "import": "./dist/gegl-wasm.mjs",
+      "require": "./dist/gegl-wasm.cjs"
+    },
+    "./worker": {
+      "types": "./js/gegl.d.ts",
+      "browser": "./js/gegl-worker-wrapper.js",
+      "import": "./js/gegl-worker-wrapper.js",
+      "require": "./js/gegl-worker-wrapper.js"
+    }
+  }
+}

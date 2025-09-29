@@ -1,0 +1,101 @@
+/* You can add global styles to this file, and also import other style files */
+.app {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+.app-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.app-header h1 {
+  color: #333;
+  margin: 0;
+}
+
+.app-main {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  padding: 20px;
+}
+
+.file-input-section {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.file-button {
+  background-color: #4CAF50;
+  border: none;
+  color: white;
+  padding: 12px 24px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+.file-button:hover {
+  background-color: #45a049;
+}
+
+.canvas-section {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.image-canvas {
+  max-width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f9f9f9;
+}
+
+.controls-section {
+  text-align: center;
+  margin: 20px 0;
+}
+
+.control-button {
+  background-color: #2196F3;
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 0 10px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.3s;
+}
+
+.control-button:hover:not(:disabled) {
+  background-color: #1976D2;
+}
+
+.control-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+.status-section {
+  text-align: center;
+  margin-top: 20px;
+}
+
+.status-section p {
+  margin: 0;
+  font-weight: bold;
+  color: #666;
+}

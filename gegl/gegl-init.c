@@ -68,8 +68,7 @@ guint gegl_debug_flags = 0;
 #include "gegl-instrument.h"
 #include "gegl-init.h"
 #include "gegl-init-private.h"
-#include "module/geglmodule.h"
-#include "module/geglmoduledb.h"
+
 #include "buffer/gegl-buffer.h"
 #include "operation/gegl-operation.h"
 #include "operation/gegl-operations.h"
@@ -98,11 +97,7 @@ static GeglConfig   *config = NULL;
 
 static GeglStats    *stats = NULL;
 
-static GeglModuleDB *module_db   = NULL;
-
 static glong         global_time = 0;
-
-static void load_module_path(gchar *path, GeglModuleDB *db);
 
 static void
 gegl_config_application_license_notify (GObject    *gobject,
@@ -110,13 +105,8 @@ gegl_config_application_license_notify (GObject    *gobject,
                                         gpointer    user_data)
 {
   GeglConfig *cfg = GEGL_CONFIG (gobject);
-  GSList *paths = gegl_get_default_module_paths ();
 
   gegl_operations_set_licenses_from_string (cfg->application_license);
-
-  /* causes load of .so's that might have been skipped due to filename */
-  g_slist_foreach(paths, (GFunc)load_module_path, module_db);
-  g_slist_free_full (paths, g_free);
 }
 
 
@@ -555,11 +545,9 @@ gegl_exit (void)
   gegl_tile_alloc_cleanup ();
   gegl_cl_cleanup ();
 
-  gegl_temp_buffer_free ();
+   gegl_temp_buffer_free ();
 
-  g_clear_object (&module_db);
-
-  babl_exit ();
+   babl_exit ();
 
   GEGL_INSTRUMENT_END ("gegl", "gegl_exit")
 
@@ -607,59 +595,12 @@ gegl_get_version (int *major,
     *micro = GEGL_MICRO_VERSION;
 }
 
-void
-gegl_load_module_directory (const gchar *path)
-{
-  g_return_if_fail (g_file_test (path, G_FILE_TEST_IS_DIR));
-
-  gegl_module_db_load (module_db, path);
-}
 
 
-GSList *
-gegl_get_default_module_paths(void)
-{
-  GSList *list = NULL;
-  gchar *module_path = NULL;
 
-  // GEGL_PATH
-  const gchar *gegl_path = g_getenv ("GEGL_PATH");
-  if (gegl_path)
-    {
-      list = g_slist_append (list, g_strdup (gegl_path));
-      return list;
-    }
 
-  // System library dir
-#ifdef G_OS_WIN32
-  {
-    gchar *prefix;
-    prefix = g_win32_get_package_installation_directory_of_module ( hLibGeglModule );
-    module_path = g_build_filename (prefix, "lib", GEGL_LIBRARY, NULL);
-    g_free(prefix);
-  }
-#else
-  module_path = g_build_filename (LIBDIR, GEGL_LIBRARY, NULL);
-#endif
-  list = g_slist_append (list, module_path);
 
-  /* User data dir
-   * ~/.local/share/gegl-x.y/plug-ins */
-  module_path = g_build_filename (g_get_user_data_dir (),
-                                  GEGL_LIBRARY,
-                                  "plug-ins",
-                                  NULL);
-  g_mkdir_with_parents (module_path, S_IRUSR | S_IWUSR | S_IXUSR);
-  list = g_slist_append (list, module_path);
 
-  return list;
-}
-
-static void
-load_module_path(gchar *path, GeglModuleDB *db)
-{
-  gegl_module_db_load (db, path);
-}
 
 static gboolean
 gegl_post_parse_hook (GOptionContext *context,
@@ -686,6 +627,9 @@ gegl_post_parse_hook (GOptionContext *context,
 #if ARCH_ARM
   GeglCpuAccelFlags cpu_accel = gegl_cpu_accel_get_support ();
   _gegl_init_buffer ((cpu_accel & GEGL_CPU_ACCEL_ARM_NEON) != 0);
+#elif ARCH_WASM
+  GeglCpuAccelFlags cpu_accel = gegl_cpu_accel_get_support ();
+  _gegl_init_buffer ((cpu_accel & GEGL_CPU_ACCEL_WASM_SIMD) != 0);
 #else
   GeglCpuAccelFlags cpu_accel = gegl_cpu_accel_get_support ();
   int x86_64_version = 0;
@@ -760,18 +704,10 @@ gegl_post_parse_hook (GOptionContext *context,
   gegl_buffer_swap_init ();
   gegl_parallel_init ();
   gegl_compression_init ();
-  gegl_operation_gtype_init ();
-  gegl_tile_cache_init ();
+   gegl_operation_gtype_init ();
+   gegl_tile_cache_init ();
 
-  if (!module_db)
-    {
-      GSList *paths = gegl_get_default_module_paths ();
-      module_db = gegl_module_db_new (FALSE);
-      g_slist_foreach(paths, (GFunc)load_module_path, module_db);
-      g_slist_free_full (paths, g_free);
-    }
-
-  GEGL_INSTRUMENT_END ("gegl_init", "load modules");
+   GEGL_INSTRUMENT_END ("gegl_init", "load modules");
 
   gegl_instrument ("gegl", "gegl_init", gegl_ticks () - global_time);
 

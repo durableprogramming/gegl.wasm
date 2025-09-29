@@ -44,35 +44,44 @@ gegl_introspectable_headers = files(
 ]
 
 gegl_headers = files(
-  'gegl-cpuaccel.h',
-  'gegl-debug.h',
-  'gegl-op.h',
-  'gegl-math.h',
-  'gegl-plugin.h',
+   'gegl-cpuaccel.h',
+   'gegl-debug.h',
+   'gegl-op.h',
+   'gegl-math.h',
+   'gegl-plugin.h',
+   'wasm-memory.h',
+   'wasm-threading.h',
+   'wasm-io.h',
+   'wasm-config.h',
+   'wasm-progressive.h',
 )
 
 gegl_sources = files(
-  'gegl-apply.c',
-  'gegl-config.c',
-  'gegl-cpuaccel.c',
-  'gegl-dot-visitor.c',
-  'gegl-dot.c',
-  'gegl-enums.c',
-  'gegl-gio.c',
-  'gegl-init.c',
-  'gegl-instrument.c',
-  'gegl-introspection-support.c',
-  'gegl-lookup.c',
-  'gegl-matrix.c',
-  'gegl-metadata.c',
-  'gegl-metadatastore.c',
-  'gegl-metadatahash.c',
-  'gegl-parallel.c',
-  'gegl-random.c',
-  'gegl-serialize.c',
-  'gegl-stats.c',
-  'gegl-utils.c',
-  'gegl-xml.c',
+   'gegl-apply.c',
+   'gegl-config.c',
+   'gegl-cpuaccel.c',
+   'gegl-dot-visitor.c',
+   'gegl-dot.c',
+   'gegl-enums.c',
+   'gegl-gio.c',
+   'gegl-init.c',
+   'gegl-instrument.c',
+   'gegl-introspection-support.c',
+   'gegl-lookup.c',
+   'gegl-matrix.c',
+   'gegl-metadata.c',
+   'gegl-metadatastore.c',
+   'gegl-metadatahash.c',
+   'gegl-parallel.c',
+   'gegl-random.c',
+   'gegl-serialize.c',
+   'gegl-stats.c',
+   'gegl-utils.c',
+   'gegl-xml.c',
+   'wasm-memory.c',
+   'wasm-threading.c',
+   'wasm-io.c',
+   'wasm-progressive.c',
 )
 
 subdir('buffer')
@@ -100,6 +109,8 @@ if host_cpu_family == 'x86_64'
   simd_extra = [lib_gegl_x86_64_v2, lib_gegl_x86_64_v3]
 elif host_cpu_family == 'arm'
   simd_extra = [lib_gegl_arm_neon]
+elif host_cpu_family.contains('wasm')
+  simd_extra = [lib_gegl_wasm_simd]
 else
   simd_extra = []
 endif

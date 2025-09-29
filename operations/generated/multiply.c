@@ -74,7 +74,8 @@ process (GeglOperation       *op,
 
   if (aux == NULL)
     {
-      gfloat value = GEGL_PROPERTIES (op)->value;
+      gfloat value;
+      g_object_get (op, "value", &value, NULL);
       for (i=0; i<n_pixels; i++)
         {
           gint   j;

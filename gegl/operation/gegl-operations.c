@@ -34,6 +34,7 @@ static gchar     **accepted_licenses       = NULL;
 static GHashTable *known_operation_names   = NULL;
 static GHashTable *visible_operation_names = NULL;
 static GSList     *operations_list         = NULL;
+static GSList     *gegl_operation_types     = NULL;
 static guint       gtype_hash_serial       = 0;
 
 static GRWLock  operations_cache_rw_lock        = { 0, };
@@ -103,20 +104,22 @@ gegl_operation_class_register_name (GeglOperationClass *klass,
 {
   GType this_type, check_type;
   this_type = G_TYPE_FROM_CLASS (klass);
+  const gchar *type_name = g_type_name (this_type);
 
   lock_operations_cache (TRUE);
 
-  check_type = (GType) g_hash_table_lookup (known_operation_names, name);
+  check_type = (GType) g_hash_table_lookup (known_operation_names, type_name);
   if (check_type && check_type != this_type)
     {
       g_warning ("Adding %s would shadow %s for operation %s\nIf you have third party GEGL operations installed you should update them all.",
-                  g_type_name (this_type),
-                  g_type_name (check_type),
-                  name);
+                 g_type_name (this_type),
+                 g_type_name (check_type),
+                 type_name);
       return;
     }
 
-  g_hash_table_insert (known_operation_names, g_strdup (name), (gpointer) this_type);
+  klass->name = type_name;
+  g_hash_table_insert (known_operation_names, g_strdup (type_name), (gpointer) this_type);
 
   unlock_operations_cache (TRUE);
 }
@@ -270,38 +273,13 @@ gegl_operations_set_licenses_from_string (const gchar *license_str)
 GType
 gegl_operation_gtype_from_name (const gchar *name)
 {
-  guint latest_serial;
   GType type;
 
   lock_operations_cache (FALSE);
 
-  /* If any new modules have been loaded, scan for GeglOperations */
-  latest_serial = g_type_get_type_registration_serial ();
-  if (gtype_hash_serial != latest_serial)
-    {
-      unlock_operations_cache (FALSE);
-      lock_operations_cache (TRUE);
+  type = (GType) g_hash_table_lookup (visible_operation_names, name);
 
-      latest_serial = g_type_get_type_registration_serial ();
-      if (gtype_hash_serial != latest_serial)
-        {
-          add_operations (GEGL_TYPE_OPERATION);
-
-          gtype_hash_serial = latest_serial;
-
-          gegl_operations_update_visible ();
-        }
-
-      type = (GType) g_hash_table_lookup (visible_operation_names, name);
-
-      unlock_operations_cache (TRUE);
-    }
-  else
-    {
-      type = (GType) g_hash_table_lookup (visible_operation_names, name);
-
-      unlock_operations_cache (FALSE);
-    }
+  unlock_operations_cache (FALSE);
 
   return type;
 }
@@ -371,6 +349,9 @@ gegl_operation_gtype_init (void)
 
   if (!visible_operation_names)
     visible_operation_names = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
+
+  /* The operations are registered at load time via constructors */
+  gegl_operations_update_visible ();
 
   unlock_operations_cache (TRUE);
 }

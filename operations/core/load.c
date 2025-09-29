@@ -18,361 +18,91 @@
 
 #include "config.h"
 #include <glib/gi18n-lib.h>
-#include <gegl-metadata.h>
-
-#ifdef G_OS_WIN32
-#define realpath(a,b) _fullpath(b,a,_MAX_PATH)
-#endif
 
 #ifdef GEGL_PROPERTIES
 
-property_file_path (path, _("File"), "")
-    description (_("Path of file to load."))
-property_uri (uri, _("URI"), "")
-    description (_("URI of file to load."))
-property_object (metadata, _("Metadata"), GEGL_TYPE_METADATA)
-    description (_("Object to supply image metadata"))
+property_object (buffer, _("Buffer"), GEGL_TYPE_BUFFER)
+    description (_("The buffer to load"))
 
 #else
 
+#define GEGL_OP_FILTER
 #define GEGL_OP_NAME     load
 #define GEGL_OP_C_SOURCE load.c
 
-#include <gegl-plugin.h>
-#include <gegl-gio-private.h>
+#include "gegl-op.h"
 
-struct _GeglOp
+static void
+prepare (GeglOperation *operation)
 {
-  GeglOperationMeta parent_instance;
-  gpointer          properties;
+  GeglBuffer *buffer;
+  g_object_get (operation, "buffer", &buffer, NULL);
 
-  GeglNode *output;
-  GeglNode *load;
-};
+  if (buffer)
+    {
+      gegl_operation_set_format (operation, "output", gegl_buffer_get_format (buffer));
+      g_object_unref (buffer);
+    }
+  else
+    gegl_operation_set_format (operation, "output", babl_format ("RGBA float"));
+}
 
-typedef struct
+static GeglRectangle
+get_bounding_box (GeglOperation *operation)
 {
-  GeglOperationMetaClass parent_class;
-} GeglOpClass;
+  GeglBuffer *buffer;
+  g_object_get (operation, "buffer", &buffer, NULL);
 
-#include <gegl-op.h>
-GEGL_DEFINE_DYNAMIC_OPERATION(GEGL_TYPE_OPERATION_META)
+  if (buffer)
+    {
+      GeglRectangle rect = *gegl_buffer_get_extent (buffer);
+      g_object_unref (buffer);
+      return rect;
+    }
 
-#include <stdio.h>
-#include <stdlib.h>
-#define SNIFFING_LENGTH 4096
+  return *GEGL_RECTANGLE (0, 0, 0, 0);
+}
 
 static gboolean
-read_from_stream (GInputStream *stream,
-                  guchar      **buffer,
-                  gsize        *read,
-                  GError      **error)
+process (GeglOperation       *operation,
+         GeglBuffer          *input,
+         GeglBuffer          *output,
+         const GeglRectangle *roi,
+         gint                 level)
 {
-  const gsize size = SNIFFING_LENGTH;
+  GeglBuffer *buffer;
+  g_object_get (operation, "buffer", &buffer, NULL);
 
-  *read = 0;
-  *buffer = g_try_new (guchar, size);
-
-  g_assert (buffer != NULL);
-
-  return g_input_stream_read_all (stream, *buffer, size, read, NULL, error);
-}
-
-static void
-do_setup (GeglOperation *operation, const gchar *path, const gchar *uri)
-{
-  GeglOp  *self = GEGL_OP (operation);
-  GeglProperties *o = GEGL_PROPERTIES (operation);
-  const gchar *handler = NULL;
-  gchar *content_type = NULL, *filename = NULL, *message;
-  gboolean load_from_uri, uncertain;
-  GInputStream *stream = NULL;
-  GError *error = NULL;
-  GFile *file = NULL;
-  guchar *buffer = NULL;
-  gsize size;
-
-  if (uri != NULL && strlen (uri) > 0)
+  if (buffer)
     {
-      if (!gegl_gio_uri_is_datauri (uri))
-        filename = g_filename_display_name (uri);
-      stream = gegl_gio_open_input_stream (uri, NULL, &file, &error);
-      if (stream == NULL || (file == NULL && !gegl_gio_uri_is_datauri (uri)))
-        {
-          if (!gegl_gio_uri_is_datauri (uri))
-            {
-              if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND))
-                {
-                  message = g_strdup_printf ("%s does not exist", filename);
-                  gegl_node_set (self->load,
-                                 "operation", "gegl:text",
-                                 "string", message,
-                                 "size", 12.0,
-                                 NULL);
-                  g_free (message);
-                }
-
-              g_warning ("%s does not exist or could not be opened", filename);
-            }
-          else
-            g_warning ("datauri could not be parsed");
-
-          g_clear_error (&error);
-          goto cleanup;
-        }
-      load_from_uri = TRUE;
-    }
-  else if (path != NULL && strlen (path) > 0)
-    {
-      gchar *resolved_path = realpath (path, NULL);
-      if (resolved_path)
-        {
-          filename = g_filename_display_name (resolved_path);
-
-          stream = gegl_gio_open_input_stream (NULL, resolved_path, &file, &error);
-          if (stream == NULL || file == NULL)
-            {
-              if (g_error_matches (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND))
-                {
-                  message = g_strdup_printf ("%s does not exist", filename);
-                  gegl_node_set (self->load,
-                                 "operation", "gegl:text",
-                                 "string", message,
-                                 "size", 12.0,
-                                 NULL);
-                  g_free (message);
-                }
-              g_warning ("%s does not exist or could not be opened", filename);
-              g_clear_error (&error);
-              free (resolved_path);
-              goto cleanup;
-            }
-          load_from_uri = FALSE;
-          free (resolved_path);
-        }
-      else
-        {
-          gegl_node_set (self->load,
-                         "operation", "gegl:text",
-                         "string", "load failed",
-                         "size", 12.0,
-                         NULL);
-          goto cleanup;
-        }
-    }
-  else
-    {
-      gegl_node_set (self->load,
-                     "operation", "gegl:text",
-                     "string", "No path or URI specified",
-                     "size", 12.0,
-                     NULL);
-      return;
+      gegl_buffer_copy (buffer, roi, GEGL_ABYSS_NONE, output, roi);
+      g_object_unref (buffer);
     }
 
-  g_assert (stream != NULL);
-
-  if (load_from_uri)
-    {
-      if (!read_from_stream (stream, &buffer, &size, &error))
-        {
-          g_warning ("%s", error->message);
-          g_clear_error (&error);
-          goto cleanup;
-        }
-
-      content_type = g_content_type_guess (NULL, buffer, size, &uncertain);
-      if ((!g_str_has_prefix (content_type, "image/") &&
-           !g_str_has_prefix (content_type, ".")) || uncertain)
-        {
-          g_free (content_type);
-
-          if (gegl_gio_uri_is_datauri (uri))
-            {
-              content_type = gegl_gio_datauri_get_content_type (uri);
-            }
-          else
-            {
-              content_type = g_content_type_guess (filename,
-                                                   buffer,
-                                                   size,
-                                                   NULL);
-            }
-        }
-    }
-  else
-    {
-      /* This should match the logic in glib/gio/glocalfileinfo.c for local
-       * files. Otherwise, our interpretation of the content won't match
-       * with those of other components. Contrary to what we might expect,
-       * GLib first looks at the filename, and sniffs the content only
-       * if it is inconclusive.
-       */
-
-      content_type = g_content_type_guess (filename, NULL, 0, &uncertain);
-      if ((!g_str_has_prefix (content_type, "image/") &&
-           !g_str_has_prefix (content_type, ".")) || uncertain)
-        {
-          if (!read_from_stream (stream, &buffer, &size, &error))
-            {
-              g_warning ("%s", error->message);
-              g_clear_error (&error);
-              goto cleanup;
-            }
-          g_free (content_type);
-          content_type = g_content_type_guess (filename, buffer, size, NULL);
-        }
-    }
-
-  if (!gegl_gio_uri_is_datauri (uri) &&
-      !g_str_has_prefix (content_type, "image/") &&
-      !g_str_has_prefix (content_type, "."))
-    {
-      g_free (content_type);
-
-      if (g_strrstr (filename, ".") != NULL)
-        content_type = g_strdup (g_strrstr (filename, "."));
-      else
-        content_type = NULL;
-    }
-
-  if (content_type == NULL)
-    {
-      gegl_node_set (self->load,
-                     "operation", "gegl:text",
-                     "string", "Failed to detect content type",
-                     "size", 12.0,
-                     NULL);
-      goto cleanup;
-    }
-
-  handler = gegl_operation_handlers_get_loader (content_type);
-  if (handler == NULL)
-    {
-      gegl_node_set (self->load,
-                     "operation", "gegl:text",
-                     "string", "Failed to find a loader",
-                     "size", 12.0,
-                     NULL);
-      goto cleanup;
-    }
-
-  gegl_node_set (self->load, "operation", handler, NULL);
-
-  if (o->metadata &&
-      gegl_operation_find_property (handler, "metadata") != NULL)
-    gegl_node_set (self->load, "metadata", o->metadata, NULL);
-
-  if (load_from_uri == TRUE)
-    gegl_node_set (self->load, "uri", uri, NULL);
-  else
-    gegl_node_set (self->load, "path", path, NULL);
-
-cleanup:
-
-  if (stream != NULL)
-    {
-      g_input_stream_close (stream, NULL, NULL);
-      g_object_unref (stream);
-    }
-
-  g_clear_object (&file);
-
-  g_free (buffer);
-
-  g_free (content_type);
-  g_free (filename);
-}
-
-static void
-attach (GeglOperation *operation)
-{
-  GeglOp         *self = GEGL_OP (operation);
-  GeglProperties *o    = GEGL_PROPERTIES (operation);
-
-  self->output = gegl_node_get_output_proxy (operation->node, "output");
-
-  self->load = gegl_node_new_child (operation->node,
-                                    "operation", "gegl:text",
-                                    NULL);
-
-  do_setup (operation, o->path, o->uri);
-
-  gegl_node_link (self->load, self->output);
-}
-
-static GeglNode *
-detect (GeglOperation *operation,
-        gint           x,
-        gint           y)
-{
-  GeglOp *self = GEGL_OP (operation);
-  GeglNode *output = self->output;
-  GeglRectangle bounds;
-
-  bounds = gegl_node_get_bounding_box (output); /* hopefully this is
-                                                   as correct as original
-                                                   which was peeking
-                                                   directly into output->have_rect
-                                                   */
-
-  if (x >= bounds.x &&
-      y >= bounds.y &&
-      x  < bounds.x + bounds.width &&
-      y  < bounds.y + bounds.height)
-    return operation->node;
-
-  return NULL;
-}
-
-static void
-my_set_property (GObject      *gobject,
-                 guint         property_id,
-                 const GValue *value,
-                 GParamSpec   *pspec)
-{
-  GeglOperation  *operation = GEGL_OPERATION (gobject);
-  GeglOp         *self      = GEGL_OP (operation);
-  GeglProperties *o         = GEGL_PROPERTIES (operation);
-
-  gchar *old_path = g_strdup (o->path);
-  gchar *old_uri = g_strdup (o->uri);
-  void  *old_metadata = o->metadata;
-
-  gboolean props_changed;
-
-  /* The set_property provided by the chant system does the
-   * storing and reffing/unreffing of the input properties
-   */
-  set_property (gobject, property_id, value, pspec);
-  props_changed = g_strcmp0 (o->path, old_path) || g_strcmp0 (o->uri, old_uri) || (old_metadata != o->metadata);
-
-  if (self->load && props_changed)
-    do_setup (operation, o->path, o->uri);
-  g_free (old_path);
-  g_free (old_uri);
+  return TRUE;
 }
 
 static void
 gegl_op_class_init (GeglOpClass *klass)
 {
-  GObjectClass       *object_class    = G_OBJECT_CLASS (klass);
-  GeglOperationClass *operation_class = GEGL_OPERATION_CLASS (klass);
+  GeglOperationClass       *operation_class;
+  GeglOperationFilterClass *filter_class;
 
-  object_class->set_property = my_set_property;
+  operation_class = GEGL_OPERATION_CLASS (klass);
+  filter_class    = GEGL_OPERATION_FILTER_CLASS (klass);
 
-  operation_class->attach = attach;
-  operation_class->detect = detect;
+  operation_class->prepare = prepare;
+  operation_class->get_bounding_box = get_bounding_box;
+
+  filter_class->process = process;
 
   gegl_operation_class_set_keys (operation_class,
     "name"       , "gegl:load",
-    "title",       "Load Image",
+    "title",       "Load Buffer",
     "categories" , "meta:input",
-    "description",
-          _("Multipurpose file loader, that uses other native handlers, and "
-            "fallback conversion using Image Magick's convert."),
+     "description",
+            _("Load a buffer from memory."),
     NULL);
-
 }
 
 #endif

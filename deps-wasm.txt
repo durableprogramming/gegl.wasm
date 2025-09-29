@@ -1,0 +1,49 @@
+# WebAssembly-compatible versions for GEGL dependencies
+# This file lists versions of GEGL dependencies that are compatible with WebAssembly compilation using Emscripten
+
+## Core Required Dependencies
+
+### BABL (Pixel format conversion library)
+- Version: >= 0.1.112
+- WASM compatibility: Must be compiled with Emscripten
+- Alternative: None (core dependency for GEGL's pixel processing)
+- Notes: Required for all GEGL operations. Cannot be disabled.
+
+### GLib (Core utility library)
+- Version: >= 2.44.0
+- WASM compatibility: Must be compiled with Emscripten
+- Alternative: None (fundamental dependency for GObject system)
+- Notes: Required for GObject-based architecture. Cannot be disabled.
+
+### JSON-GLib (JSON processing library)
+- Version: >= 1.0.0
+- WASM compatibility: Must be compiled with Emscripten
+- Alternative: Consider cJSON or rapidjson for lighter JSON handling
+- Notes: Used for operation metadata and configuration. Can be disabled initially for minimal builds.
+
+## Initially Disabled Dependencies (for minimal WASM builds)
+
+The following dependencies are disabled in meson-wasm.build for WASM builds:
+- g-ir (GObject Introspection) - Not needed for runtime
+- vapigen (Vala bindings) - Not needed for runtime
+- gexiv2 (EXIF metadata) - Disabled for WASM
+- libpng, libjpeg - Image I/O operations disabled
+- cairo, pango - 2D graphics operations disabled
+- OpenCL - Not applicable for WebAssembly
+- SDL, FFmpeg - Multimedia operations disabled
+- And many others...
+
+## Building Dependencies for WASM
+
+All dependencies must be compiled with Emscripten using:
+- emconfigure ./configure
+- emmake make
+
+Or using Meson with appropriate cross-compilation files.
+
+## Notes on WASM-specific considerations
+
+- Threading support (gthread) is replaced with wasm-threading.c
+- File system operations are limited to Emscripten's virtual FS
+- Some GLib features may need to be disabled for WASM compatibility
+- Memory management uses Emscripten's malloc implementation

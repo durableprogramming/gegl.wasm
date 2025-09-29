@@ -68,9 +68,12 @@ typedef enum
   /* powerpc accelerations */
   GEGL_CPU_ACCEL_PPC_ALTIVEC = 0x00000010,
 
-  /* arm accelerations */
-  GEGL_CPU_ACCEL_ARM_NEON    = 0x00000020,
-} GeglCpuAccelFlags;
+   /* arm accelerations */
+   GEGL_CPU_ACCEL_ARM_NEON    = 0x00000020,
+
+   /* WebAssembly accelerations */
+   GEGL_CPU_ACCEL_WASM_SIMD   = 0x00000040,
+ } GeglCpuAccelFlags;
 
 
 GeglCpuAccelFlags  gegl_cpu_accel_get_support (void);

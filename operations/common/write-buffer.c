@@ -57,11 +57,11 @@ process (GeglOperation       *operation,
          const GeglRectangle *result,
          gint                 level)
 {
-  GeglProperties *o = GEGL_PROPERTIES (operation);
+  GeglBuffer *output;
+  g_object_get (operation, "buffer", &output, NULL);
 
-  if (o->buffer)
+  if (output)
     {
-      GeglBuffer *output = GEGL_BUFFER (o->buffer);
       const Babl *in_format = gegl_buffer_get_format (input);
       const Babl *out_format = gegl_buffer_get_format (output);
 
@@ -144,15 +144,20 @@ process (GeglOperation       *operation,
         }
     }
 
+  if (output)
+    g_object_unref (output);
+
   return TRUE;
 }
 
 static void
 dispose (GObject *object)
 {
+#ifndef GEGL_OP_BUNDLE
   GeglProperties *o = GEGL_PROPERTIES (object);
 
   g_clear_object (&o->buffer);
+#endif
 
   G_OBJECT_CLASS (gegl_op_parent_class)->dispose (object);
 }

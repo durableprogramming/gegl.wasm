@@ -55,6 +55,8 @@
 
 #include <gegl-plugin.h>
 
+extern GSList *gegl_operation_types;
+
 G_BEGIN_DECLS
 
 typedef struct _GeglProperties  GeglProperties;
@@ -250,6 +252,8 @@ gegl_module_register (GTypeModule *module)
 #undef do_reg
   return TRUE;
 }
+
+__attribute__((constructor)) static void gegl_op_register (void) { gegl_operation_types = g_slist_prepend (gegl_operation_types, gegl_op_ ## GEGL_OP_NAME ## _get_type ()); }
 #endif
 #endif
 
@@ -288,7 +292,11 @@ gegl_module_register (GTypeModule *module)
 #define enum_value_skip(value)           value ,
 #define enum_end(enum)          } enum ;
 
+#ifndef GEGL_OP_BUNDLE
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
+#endif
 
 #undef enum_start
 #undef enum_value
@@ -330,7 +338,9 @@ static GType enum_name ## _get_type (void)               \
   return etype;                                                   \
 }
 
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
 
 #undef property_double
 #undef property_int
@@ -378,7 +388,9 @@ struct _GeglProperties
 #define property_seed(name, label, rand_name)          guint       name;\
                                                        GeglRandom *rand_name;
 
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
 
 #undef property_double
 #undef property_int
@@ -423,7 +435,9 @@ enum
 #define property_enum(name, label, enm, enum_name, def_val) ITEM(name,label,def_val,enum)
 #define property_seed(name, label, rand_name)     ITEM(name,label,def_val,uint)
 
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
 
 #undef ITEM
 #define ITEM(name,label,def_val, type) \
@@ -448,7 +462,9 @@ get_property (GObject      *gobject,
   switch (property_id)
   {
 
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
 
 #undef property_double
 #undef property_int
@@ -571,7 +587,9 @@ set_property (GObject      *gobject,
         gegl_random_set_seed (properties->rand_name, properties->name);\
       break;
 
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
 
 #undef property_double
 #undef property_int
@@ -625,7 +643,9 @@ static void gegl_op_destroy_notify (gpointer data)
 #define property_enum(name, label, ...)
 #define property_seed(name, label, ...)
 
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
 
 #undef property_double
 #undef property_int
@@ -682,7 +702,9 @@ gegl_op_constructor (GType                  type,
     if (properties->rand_name == NULL)              \
       {properties->rand_name = gegl_random_new_with_seed (0);}
 
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
 
 #undef property_double
 #undef property_int
@@ -968,7 +990,9 @@ gegl_op_class_intern_init (gpointer klass)
   }{ GParamSpec *pspec = gegl_param_spec_seed (#name, label, NULL, flags);       \
     current_prop = PROP_##name ;
 
+#ifndef GEGL_OP_BUNDLE
 #include GEGL_OP_C_FILE
+#endif
 
     REGISTER_IF_ANY
   }

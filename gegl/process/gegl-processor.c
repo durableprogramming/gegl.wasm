@@ -19,6 +19,10 @@
 
 #include "config.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #include <glib-object.h>
 
 #include "gegl.h"
@@ -34,6 +38,8 @@
 #include "gegl-config.h"
 #include "gegl-processor.h"
 #include "gegl-processor-private.h"
+
+#define MAX_RECTS_PER_CALL 1
 
 #include "graph/gegl-visitor.h"
 #include "graph/gegl-callback-visitor.h"
@@ -432,7 +438,10 @@ static gboolean
 render_rectangle (GeglProcessor *processor)
 {
   gboolean    buffered;
-  const gint  max_area = processor->chunk_size * (1<<processor->level) * (1<<processor->level) * gegl_config_threads();
+  gint  max_area = processor->chunk_size * (1<<processor->level) * (1<<processor->level) * gegl_config_threads();
+#ifdef __EMSCRIPTEN__
+  max_area = MIN(max_area, 64 * 64);
+#endif
   GeglCache  *cache    = NULL;
   const Babl *format   = NULL;
 
@@ -452,7 +461,7 @@ render_rectangle (GeglProcessor *processor)
 
       /* If a dirty rectangle is bigger than the max area, then cut it
        * to smaller pieces */
-      if (dr->height * dr->width > max_area && 1)
+      while (dr->height * dr->width > max_area)
         {
           gint band_size;
 
@@ -461,16 +470,8 @@ render_rectangle (GeglProcessor *processor)
 
             fragment = g_slice_dup (GeglRectangle, dr);
 
-            /* When splitting a rectangle, we'll do it on the biggest side */
-            if (dr->width > dr->height)
-              {
-                band_size = gegl_processor_get_band_size ( dr->width );
-
-                fragment->width = band_size;
-                dr->width      -= band_size;
-                dr->x          += band_size;
-              }
-            else
+            /* When splitting a rectangle, prefer to split on height for progressive rendering */
+            if (dr->height > dr->width)
               {
                 band_size = gegl_processor_get_band_size (dr->height);
 
@@ -478,9 +479,16 @@ render_rectangle (GeglProcessor *processor)
                 dr->height      -= band_size;
                 dr->y           += band_size;
               }
+            else
+              {
+                band_size = gegl_processor_get_band_size ( dr->width );
+
+                fragment->width = band_size;
+                dr->width      -= band_size;
+                dr->x          += band_size;
+              }
             processor->dirty_rectangles = g_slist_prepend (processor->dirty_rectangles, fragment);
           }
-          return TRUE;
         }
       /* remove the rectangle that will be processed from the list of dirty ones */
       processor->dirty_rectangles = g_slist_remove (processor->dirty_rectangles, dr);
@@ -778,11 +786,18 @@ gegl_processor_work (GeglProcessor *processor,
         }
     }
 
-  more_work = gegl_processor_render (processor, &processor->rectangle, progress);
-  if (more_work)
-    {
-      return TRUE;
-    }
+  int processed = 0;
+  gboolean more = TRUE;
+  while (processed < MAX_RECTS_PER_CALL && more) {
+    more = gegl_processor_render (processor, &processor->rectangle, progress);
+    processed++;
+  }
+  if (more) {
+#ifdef __EMSCRIPTEN__
+    emscripten_sleep(0);
+#endif
+    return TRUE;
+  }
 
   if (progress)
     {

@@ -6,4 +6,7 @@ GEGL_VARIANTS(x86_64_v3)
 #if ARCH_ARM
 GEGL_VARIANTS(arm_neon)
 #endif
+#if ARCH_WASM
+GEGL_VARIANTS(wasm_simd)
+#endif
 

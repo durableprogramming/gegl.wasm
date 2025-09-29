@@ -51,6 +51,8 @@ struct _GeglOperationPrivate
 };
 
 
+
+
 static void            attach                           (GeglOperation       *self);
 
 static GeglRectangle   get_bounding_box                 (GeglOperation       *self);

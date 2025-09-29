@@ -22,6 +22,11 @@
 #include <glib-object.h>
 #include <babl/babl.h>
 
+#ifdef GEGL_WASM_BUILD
+#include "wasm-threading.h"
+#include "wasm-config.h"
+#include "wasm-progressive.h"
+#endif
 
 #define __GEGL_H_INSIDE__
 

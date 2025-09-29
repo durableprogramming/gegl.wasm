@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GEGL.wasm Vanilla JS Example</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .file-input {
+            margin: 20px 0;
+            padding: 10px;
+            border: 2px dashed #ccc;
+            border-radius: 5px;
+            text-align: center;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        .file-input:hover {
+            border-color: #666;
+        }
+        .canvas-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        canvas {
+            max-width: 100%;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .controls {
+            margin: 20px 0;
+            text-align: center;
+        }
+        button {
+            background-color: #4CAF50;
+            border: none;
+            color: white;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .status {
+            text-align: center;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>GEGL.wasm Vanilla JS Example</h1>
+
+        <div class="info">
+            <strong>Instructions:</strong> Upload an image file to apply a blur effect using GEGL.wasm.
+        </div>
+
+        <div class="file-input" id="fileInput">
+            <div>Click to select an image</div>
+            <input type="file" id="fileUpload" accept="image/*" style="display: none;">
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="controls">
+            <button id="blurBtn" disabled>Apply Blur</button>
+            <button id="resetBtn" disabled>Reset</button>
+        </div>
+
+        <div class="status" id="status">Ready to load an image</div>
+    </div>
+
+    <!-- Load GEGL.wasm JavaScript bindings -->
+    <script src="../../../js/gegl-wrapper.js"></script>
+    <script src="../../../js/canvas-utils.js"></script>
+    <script src="../../../js/gegl-worker-wrapper.js"></script>
+
+    <script>
+        let worker = null;
+        let originalImageData = null;
+
+        const fileInput = document.getElementById('fileInput');
+        const fileUpload = document.getElementById('fileUpload');
+        const canvas = document.getElementById('canvas');
+        const blurBtn = document.getElementById('blurBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const status = document.getElementById('status');
+
+        async function init() {
+            try {
+                updateStatus('Initializing GEGL.wasm...');
+                worker = new GeglWorker('../../../build-wasm-prod/gegl.js');
+                await worker.init();
+                updateStatus('GEGL.wasm initialized successfully!');
+                setupEventListeners();
+            } catch (error) {
+                console.error('Failed to initialize GEGL:', error);
+                updateStatus('Failed to initialize GEGL.wasm');
+            }
+        }
+
+        function setupEventListeners() {
+            fileInput.addEventListener('click', () => {
+                fileUpload.click();
+            });
+
+            fileUpload.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    loadImage(file);
+                }
+            });
+
+            blurBtn.addEventListener('click', applyBlur);
+            resetBtn.addEventListener('click', resetImage);
+        }
+
+        async function loadImage(file) {
+            try {
+                updateStatus('Loading image...');
+
+                const img = new Image();
+                const ctx = canvas.getContext('2d');
+
+                await new Promise((resolve, reject) => {
+                    img.onload = resolve;
+                    img.onerror = reject;
+                    img.src = URL.createObjectURL(file);
+                });
+
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+
+                originalImageData = ctx.getImageData(0, 0, img.width, img.height);
+
+                blurBtn.disabled = false;
+                resetBtn.disabled = false;
+                updateStatus('Image loaded successfully!');
+
+                URL.revokeObjectURL(img.src);
+
+            } catch (error) {
+                console.error('Failed to load image:', error);
+                updateStatus('Failed to load image');
+            }
+        }
+
+        async function applyBlur() {
+            if (!originalImageData) return;
+
+            try {
+                updateStatus('Applying blur effect...');
+                blurBtn.disabled = true;
+
+                const operations = [{
+                    operation: 'gegl:blur-gaussian',
+                    properties: {
+                        std_dev_x: 5.0,
+                        std_dev_y: 5.0
+                    }
+                }];
+
+                const result = await worker.process(originalImageData, operations);
+
+                const ctx = canvas.getContext('2d');
+                const processedImageData = new ImageData(
+                    new Uint8ClampedArray(result.data),
+                    result.width,
+                    result.height
+                );
+                ctx.putImageData(processedImageData, 0, 0);
+
+                blurBtn.disabled = false;
+                updateStatus('Blur effect applied!');
+
+            } catch (error) {
+                console.error('Failed to apply blur:', error);
+                updateStatus('Failed to apply blur effect');
+                blurBtn.disabled = false;
+            }
+        }
+
+        function resetImage() {
+            if (originalImageData) {
+                const ctx = canvas.getContext('2d');
+                ctx.putImageData(originalImageData, 0, 0);
+                updateStatus('Image reset to original');
+            }
+        }
+
+        function updateStatus(message) {
+            status.textContent = message;
+        }
+
+        // Initialize when page loads
+        window.addEventListener('load', init);
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (worker) {
+                worker.cleanup();
+            }
+        });
+    </script>
+</body>
+</html>

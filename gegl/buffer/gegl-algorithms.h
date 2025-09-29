@@ -34,6 +34,9 @@ G_BEGIN_DECLS
 #ifdef SIMD_ARM_NEON
 #define GEGL_SIMD_SUFFIX(symbol)  symbol##_arm_neon
 #endif
+#ifdef SIMD_WASM_SIMD
+#define GEGL_SIMD_SUFFIX(symbol)  symbol##_wasm_simd
+#endif
 #ifndef GEGL_SIMD_SUFFIX
 #define GEGL_SIMD_SUFFIX(symbol)  symbol##_generic
 #ifndef SIMD_GENERIC

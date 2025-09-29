@@ -21,6 +21,11 @@
 
 #include <glib-object.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+extern double emscripten_run_script_double(const char *script);
+#endif
+
 #include "gegl-buffer.h"
 #include "gegl-buffer-backend.h"
 #include "gegl-tile-backend.h"
@@ -29,14 +34,7 @@
 /* We need the private header so we can check the ref_count of tiles */
 #include "gegl-buffer-private.h"
 
-typedef struct _RamEntry RamEntry;
 
-struct _RamEntry
-{
-  gint    x;
-  gint    y;
-  GeglTile *tile;
-};
 
 G_DEFINE_TYPE (GeglTileBackendRam, gegl_tile_backend_ram, GEGL_TYPE_TILE_BACKEND)
 #define parent_class gegl_tile_backend_ram_parent_class
@@ -63,7 +61,11 @@ static gboolean  void_tile  (GeglTileSource *store,
 
 void gegl_tile_backend_ram_stats (void)
 {
-  /* FIXME: Stats disabled for now as there's nothing meaningful to report */
+#ifdef __EMSCRIPTEN__
+  g_print ("GeglTileBackendRam stats: Not implemented for WASM\n");
+#else
+  g_print ("GeglTileBackendRam stats: Not implemented\n");
+#endif
 }
 
 static inline RamEntry *
@@ -80,6 +82,57 @@ lookup_entry (GeglTileBackendRam *self,
   return g_hash_table_lookup (self->entries, &key);
 }
 
+#ifdef __EMSCRIPTEN__
+static void
+lru_remove (GeglTileBackendRam *self, RamEntry *entry)
+{
+  if (entry->prev)
+    entry->prev->next = entry->next;
+  else
+    self->lru_head = entry->next;
+
+  if (entry->next)
+    entry->next->prev = entry->prev;
+  else
+    self->lru_tail = entry->prev;
+
+  entry->prev = entry->next = NULL;
+}
+
+static void
+lru_add_front (GeglTileBackendRam *self, RamEntry *entry)
+{
+  entry->prev = NULL;
+  entry->next = self->lru_head;
+
+  if (self->lru_head)
+    self->lru_head->prev = entry;
+  else
+    self->lru_tail = entry;
+
+  self->lru_head = entry;
+}
+
+static void
+move_to_front (GeglTileBackendRam *self, RamEntry *entry)
+{
+  lru_remove (self, entry);
+  lru_add_front (self, entry);
+}
+
+static void
+evict_tiles (GeglTileBackendRam *self)
+{
+  while (self->current_memory > self->memory_limit && self->lru_tail)
+    {
+      RamEntry *victim = self->lru_tail;
+      lru_remove (self, victim);
+      self->current_memory -= victim->tile->size;
+      g_hash_table_remove (self->entries, victim);
+    }
+}
+#endif
+
 static GeglTile *
 get_tile (GeglTileSource *tile_store,
           gint        x,
@@ -92,7 +145,12 @@ get_tile (GeglTileSource *tile_store,
     {
       RamEntry *entry = lookup_entry (tile_backend_ram, x, y);
       if (entry)
-        return gegl_tile_ref (entry->tile);
+        {
+#ifdef __EMSCRIPTEN__
+          move_to_front (tile_backend_ram, entry);
+#endif
+          return gegl_tile_ref (entry->tile);
+        }
     }
 
   return NULL;
@@ -144,10 +202,17 @@ gboolean set_tile (GeglTileSource *store,
   else if (entry->tile == tile)
     {
       gegl_tile_mark_as_stored (tile);
+#ifdef __EMSCRIPTEN__
+      move_to_front (tile_backend_ram, entry);
+#endif
       return TRUE;
     }
   else
     {
+#ifdef __EMSCRIPTEN__
+      /* Subtract old tile size */
+      tile_backend_ram->current_memory -= entry->tile->size;
+#endif
       /* Mark as stored to prevent a recursive attempt to store by tile_unref */
       gegl_tile_mark_as_stored (entry->tile);
       gegl_tile_unref (entry->tile);
@@ -159,6 +224,16 @@ gboolean set_tile (GeglTileSource *store,
     gegl_tile_ref (entry->tile);
 
   gegl_tile_mark_as_stored (entry->tile);
+
+#ifdef __EMSCRIPTEN__
+  /* Add to front of LRU list */
+  lru_remove (tile_backend_ram, entry);
+  lru_add_front (tile_backend_ram, entry);
+  tile_backend_ram->current_memory += entry->tile->size;
+
+  /* Evict if over limit */
+  evict_tiles (tile_backend_ram);
+#endif
 
   return TRUE;
 }
@@ -177,7 +252,13 @@ gboolean void_tile (GeglTileSource *store,
       RamEntry *entry = lookup_entry (tile_backend_ram, x, y);
 
       if (entry != NULL)
-        g_hash_table_remove (tile_backend_ram->entries, entry);
+        {
+#ifdef __EMSCRIPTEN__
+          lru_remove (tile_backend_ram, entry);
+          tile_backend_ram->current_memory -= entry->tile->size;
+#endif
+          g_hash_table_remove (tile_backend_ram->entries, entry);
+        }
     }
 
   return TRUE;
@@ -201,7 +282,8 @@ gboolean exist_tile (GeglTileSource *store,
 
 enum
 {
-  PROP_0
+  PROP_0,
+  PROP_MEMORY_LIMIT
 };
 
 static gpointer
@@ -245,8 +327,17 @@ set_property (GObject       *object,
               const GValue  *value,
               GParamSpec    *pspec)
 {
+  GeglTileBackendRam *self = GEGL_TILE_BACKEND_RAM (object);
+
   switch (property_id)
     {
+#ifdef __EMSCRIPTEN__
+      case PROP_MEMORY_LIMIT:
+        self->memory_limit = g_value_get_uint64 (value);
+        /* If current memory exceeds new limit, evict tiles */
+        evict_tiles (self);
+        break;
+#endif
       default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
         break;
@@ -259,8 +350,15 @@ get_property (GObject    *object,
               GValue     *value,
               GParamSpec *pspec)
 {
+  GeglTileBackendRam *self = GEGL_TILE_BACKEND_RAM (object);
+
   switch (property_id)
     {
+#ifdef __EMSCRIPTEN__
+      case PROP_MEMORY_LIMIT:
+        g_value_set_uint64 (value, self->memory_limit);
+        break;
+#endif
       default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
         break;
@@ -273,6 +371,9 @@ gegl_tile_backend_ram_finalize (GObject *object)
   GeglTileBackendRam *self = GEGL_TILE_BACKEND_RAM (object);
 
   g_hash_table_unref (self->entries);
+#ifdef __EMSCRIPTEN__
+  /* LRU list is managed by the hash table entries */
+#endif
 
   G_OBJECT_CLASS (parent_class)->finalize (object);
 }
@@ -334,9 +435,24 @@ ram_entry_free_func (gpointer data)
 static void
 gegl_tile_backend_ram_constructed (GObject *object)
 {
+  GeglTileBackendRam *self = GEGL_TILE_BACKEND_RAM (object);
+
   G_OBJECT_CLASS (parent_class)->constructed (object);
 
   gegl_tile_backend_set_flush_on_destroy (GEGL_TILE_BACKEND (object), FALSE);
+
+#ifdef __EMSCRIPTEN__
+  /* Attempt to detect available browser memory and set limit accordingly */
+  double device_mem_gb = emscripten_run_script_double(
+    "typeof navigator !== 'undefined' && navigator.deviceMemory ? navigator.deviceMemory : 0"
+  );
+  if (device_mem_gb > 0) {
+    gsize estimated_limit = device_mem_gb * 1024 * 1024 * 1024 * 0.3; /* 30% of device memory */
+    if (estimated_limit > 128 * 1024 * 1024)
+      estimated_limit = 128 * 1024 * 1024; /* Cap at 128MB */
+    self->memory_limit = estimated_limit;
+  }
+#endif
 }
 
 static void
@@ -348,6 +464,15 @@ gegl_tile_backend_ram_class_init (GeglTileBackendRamClass *klass)
   gobject_class->set_property = set_property;
   gobject_class->constructed  = gegl_tile_backend_ram_constructed;
   gobject_class->finalize     = gegl_tile_backend_ram_finalize;
+
+#ifdef __EMSCRIPTEN__
+  g_object_class_install_property (gobject_class, PROP_MEMORY_LIMIT,
+                                   g_param_spec_uint64 ("memory-limit",
+                                                        "Memory Limit",
+                                                        "Maximum memory to use for tile caching in bytes",
+                                                        0, G_MAXUINT64, 64 * 1024 * 1024,
+                                                        G_PARAM_READWRITE | G_PARAM_CONSTRUCT));
+#endif
 }
 
 static void
@@ -356,7 +481,13 @@ gegl_tile_backend_ram_init (GeglTileBackendRam *self)
   GEGL_TILE_SOURCE (self)->command = gegl_tile_backend_ram_command;
 
   self->entries = g_hash_table_new_full (ram_entry_hash_func,
-                                         ram_entry_equal_func,
-                                         NULL,
-                                         ram_entry_free_func);
+                                          ram_entry_equal_func,
+                                          NULL,
+                                          ram_entry_free_func);
+#ifdef __EMSCRIPTEN__
+  self->lru_head = NULL;
+  self->lru_tail = NULL;
+  self->memory_limit = 64 * 1024 * 1024; /* 64 MB default for browser constraints */
+  self->current_memory = 0;
+#endif
 }

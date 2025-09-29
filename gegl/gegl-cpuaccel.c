@@ -75,6 +75,7 @@ gegl_cpu_accel_set_use (gboolean use)
 }
 
 
+#ifndef __wasm__
 #if defined(ARCH_X86) && defined(USE_MMX) && defined(__GNUC__)
 
 #define HAVE_ACCEL 1
@@ -473,8 +474,10 @@ arch_accel (void)
 }
 
 #endif /* ARCH_X86 && USE_MMX && __GNUC__ */
+#endif
 
 
+#ifndef __wasm__
 #if defined(ARCH_PPC) && defined (USE_ALTIVEC)
 
 #if defined(HAVE_ALTIVEC_SYSCTL)
@@ -544,8 +547,10 @@ arch_accel (void)
 #endif /* __GNUC__ */
 
 #endif /* ARCH_PPC && USE_ALTIVEC */
+#endif
 
 
+#ifndef __wasm__
 #if defined(ARCH_ARM)
 
 #include <unistd.h>
@@ -579,8 +584,47 @@ arch_accel (void)
   }
   return has_neon?GEGL_CPU_ACCEL_ARM_NEON:0;
 }
-
 #endif /* ARCH_ARM  */
+#endif
+
+
+#if defined(__wasm__)
+
+#define HAVE_ACCEL 1
+
+#include <emscripten.h>
+
+EM_JS(int, gegl_wasm_simd_supported, (), {
+  if (typeof WebAssembly !== 'undefined' && WebAssembly.validate) {
+    // Minimal WebAssembly binary with SIMD instruction (v128.const)
+    const binary = new Uint8Array([
+      0x00, 0x61, 0x73, 0x6d,  // magic
+      0x01, 0x00, 0x00, 0x00,  // version
+      0x01, 0x05, 0x01, 0x60, 0x00, 0x01, 0x7b,  // type section: () -> v128
+      0x03, 0x02, 0x01, 0x00,  // function section
+      0x07, 0x08, 0x01, 0x04, 0x74, 0x65, 0x73, 0x74, 0x00, 0x00,  // export
+      0x0a, 0x0a, 0x01, 0x08, 0x00, 0xfd, 0x0c, 0x00, 0x00, 0x00, 0x00, 0x0b  // code: v128.const 0
+    ]);
+    try {
+      return WebAssembly.validate(binary) ? 1 : 0;
+    } catch (e) {
+      return 0;
+    }
+  }
+  return 0;
+});
+
+static guint32
+arch_accel (void)
+{
+  if (gegl_wasm_simd_supported ())
+    return GEGL_CPU_ACCEL_WASM_SIMD;
+  else
+    return GEGL_CPU_ACCEL_NONE;
+}
+
+#endif /* __wasm__ */
+
 
 static GeglCpuAccelFlags
 cpu_accel (void)

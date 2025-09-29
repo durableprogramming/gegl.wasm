@@ -53330,11 +53330,11 @@ EM_ASM(
    if (em_ctx && memory_budget)
    {
       CtxCbBackend *cb_backend = (CtxCbBackend*)em_ctx->backend;
-      if (memory_budget != cb_backend->memory_budget)
-      {
-         ctx_cb_set_memory_budget (em_ctx, memory_budget);
-         ctx_cb_set_flags (em_ctx, 0);
-      }
+      // if (memory_budget != cb_backend->memory_budget)
+      // {
+      //    ctx_cb_set_memory_budget (em_ctx, memory_budget);
+      //    ctx_cb_set_flags (em_ctx, 0);
+      // }
    }
 
 

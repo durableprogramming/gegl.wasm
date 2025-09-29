@@ -543,54 +543,16 @@ json_op_register_type (GTypeModule *type_module, const gchar *name, gpointer kla
 }
 
 
-static GType
-json_op_register_type_for_file (GTypeModule *type_module, const gchar *filepath)
-{
-    GType ret = 0;
-    JsonParser *parser = json_parser_new();
-    const gboolean success = json_parser_load_from_file(parser, filepath, NULL);
 
-    if (success) {
-        JsonObject *root = json_node_dup_object(json_parser_get_root(parser));
-        const gchar *name;
-        gchar *type_name;
-
-        g_assert(root);
-
-        name = metadata_get_property(root, "name");
-        type_name = (name) ? component2gtypename(name) : component2gtypename(filepath);
-        ret = json_op_register_type(type_module, type_name, root);
-        g_free(type_name);
-    }
-
-    g_object_unref(parser);
-    return ret;
-}
 
 /* JSON operation enumeration */
-static void
-load_file(const GeglDatafileData *file_data, gpointer user_data)
-{
-    GTypeModule *module = (GTypeModule *)user_data;
-    if (!g_str_has_suffix(file_data->filename, ".json")) {
-        return;
-    }
 
-    json_op_register_type_for_file(module, file_data->filename);
-}
 
-static void
-load_path(gchar *path, gpointer user_data)
-{
-    gegl_datafiles_read_directories (path, G_FILE_TEST_EXISTS, load_file, user_data);
-}
 
 static void
 json_register_operations(GTypeModule *module)
 {
-  GSList *paths = gegl_get_default_module_paths();
-  g_slist_foreach(paths, (GFunc)load_path, module);
-  g_slist_free_full(paths, g_free);
+  /* File system loading disabled for in-memory only operation */
 }
 
 

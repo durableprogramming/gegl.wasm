@@ -1,0 +1,45 @@
+<div class="app">
+  <header class="app-header">
+    <h1>{{ title }}</h1>
+  </header>
+
+  <main class="app-main">
+    <div class="file-input-section">
+      <input
+        #fileInput
+        type="file"
+        accept="image/*"
+        (change)="onFileSelected($event)"
+        style="display: none"
+      />
+      <button class="file-button" (click)="selectFile()">
+        Select Image
+      </button>
+    </div>
+
+    <div class="canvas-section">
+      <canvas #canvas class="image-canvas"></canvas>
+    </div>
+
+    <div class="controls-section">
+      <button
+        (click)="applyBlur()"
+        [disabled]="!imageData || isProcessing || !geglWorker"
+        class="control-button"
+      >
+        {{ isProcessing ? 'Processing...' : 'Apply Blur' }}
+      </button>
+      <button
+        (click)="resetImage()"
+        [disabled]="!imageData"
+        class="control-button"
+      >
+        Reset
+      </button>
+    </div>
+
+    <div class="status-section">
+      <p>{{ status }}</p>
+    </div>
+  </main>
+</div>

@@ -26,6 +26,10 @@
 #include "gegl-buffer-formats.h"
 #include "gegl-sampler-cubic.h"
 
+#ifdef __wasm__
+#include <wasm_simd128.h>
+#endif
+
 enum
 {
   PROP_0,
@@ -193,6 +197,10 @@ gegl_sampler_cubic_interpolate (      GeglSampler     *self,
   for (i = 0; i < 4; i++)
     factor_i[i] = cubicKernel (x - (i - 1), cubic_b, cubic_c);
 
+#ifdef __wasm__
+  v128_t v_result = wasm_f32x4_splat(0.0f);
+#endif
+
   for (j = 0; j < 4; j++)
     {
       gfloat factor_j = cubicKernel (y - (j - 1), cubic_b, cubic_c);
@@ -201,14 +209,26 @@ gegl_sampler_cubic_interpolate (      GeglSampler     *self,
         {
           const gfloat factor = factor_j * factor_i[i];
 
-          for (c = 0; c < components; c++)
-            output[c] += factor * sampler_bptr[c];
+          if (components == 4) {
+#ifdef __wasm__
+            v128_t v_val = wasm_v128_load(sampler_bptr);
+            v128_t v_factor = wasm_f32x4_splat(factor);
+            v_result = wasm_f32x4_add(v_result, wasm_f32x4_mul(v_factor, v_val));
+#endif
+          } else {
+            for (c = 0; c < components; c++)
+              output[c] += factor * sampler_bptr[c];
+          }
 
           sampler_bptr += components;
         }
 
       sampler_bptr += (GEGL_SAMPLER_MAXIMUM_WIDTH - 4) * components;
     }
+
+#ifdef __wasm__
+  if (components == 4) wasm_v128_store(output, v_result);
+#endif
 }
 
 static void
